@@ -16,6 +16,7 @@ EFF = {"화염구": {"dot": "화상"}, "번개 폭풍": {"dot": "감전"}, "얼�
        "연쇄 번개": {"elem": 1, "crack": 1}, "영혼 소용돌이": {"curse": 15, "armor": 1}, "회전 난격": {"shatter": 1},
        "연쇄 타격": {"armor2": 1}, "공간 결계": {"vuln5": 1}}
 ARMOR = 0.05
+DOTV = {"화상": 5.0, "감전": 5.0, "저주": 7.0}   # 지속 피해(초당, 모델 단위)
 DS, DA, DE = 5, 5, 10
 K = {}; POK = None; BIG = None
 
@@ -108,8 +109,8 @@ def sim(order, n, T=300, cast="flat", Kc=8, dot_rage=True):
         dots = 0
         for i in range(n):
             for ty in ("화상", "감전"):
-                if u.get((ty, i), -1) > t: tot += 5.0 * dt * rm(); dots += 1
-            if u.get(("저주", i), -1) > t: tot += 7.0 * dt * rm(); dots += 1
+                if u.get((ty, i), -1) > t: tot += DOTV[ty] * dt * rm(); dots += 1
+            if u.get(("저주", i), -1) > t: tot += DOTV["저주"] * dt * rm(); dots += 1
         if dot_rage and dots and mode == "연타": last_hit = t + dt
         t += dt
     return tot / T, idle / T
