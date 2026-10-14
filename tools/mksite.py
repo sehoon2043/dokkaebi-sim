@@ -21,14 +21,19 @@ rep('.bar .status{','.auth{display:flex;flex-wrap:wrap;gap:6px;align-items:cente
 
 # 패치노트: 버튼 + 창. 내용은 patchnotes.json(사이트 저장소)만 고치면 바뀜
 rep('<button class="primary" id="saveBtn" type="button">저장</button>',
-    '<button class="primary" id="saveBtn" type="button">저장</button>\n    <button type="button" id="pnBtn" class="pn-btn">패치노트<span class="pn-dot" id="pnDot" hidden></span></button>')
+    '<button class="primary" id="saveBtn" type="button">저장</button>\n    <button type="button" id="pnBtn" class="pn-btn">패치노트<span class="pn-dot" id="pnDot" hidden></span></button>'
+    '\n    <button type="button" id="cmBtn" class="pn-btn">커뮤니티 소식<span class="pn-dot" id="cmDot" hidden></span></button>')
 rep('  <div class="cols">',
     '  <dialog id="pnDlg" aria-labelledby="pnTitle"><div class="pn-head"><h2 id="pnTitle">패치노트</h2>'
-    '<button type="button" id="pnClose" aria-label="닫기">닫기</button></div><div id="pnBody">불러오는 중…</div></dialog>\n\n  <div class="cols">')
+    '<button type="button" id="pnClose" aria-label="닫기">닫기</button></div><div id="pnBody">불러오는 중…</div></dialog>\n'
+    '  <dialog id="cmDlg" class="pn-dlg" aria-labelledby="cmTitle"><div class="pn-head"><h2 id="cmTitle">커뮤니티 소식</h2>'
+    '<button type="button" id="cmClose" aria-label="닫기">닫기</button></div><div id="cmBody">불러오는 중…</div></dialog>\n\n  <div class="cols">')
 rep('.bar .status{',
     '.pn-btn{position:relative}.pn-dot{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:var(--warn)}\n'
-    '#pnDlg{width:min(560px,calc(100vw - 32px));max-height:80vh;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0}\n'
-    '#pnDlg::backdrop{background:rgba(0,0,0,.45)}\n'
+    '#pnDlg,#cmDlg{width:min(600px,calc(100vw - 32px));max-height:80vh;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0}\n'
+    '#pnDlg::backdrop,#cmDlg::backdrop{background:rgba(0,0,0,.45)}\n#cmBody{padding:4px 16px 16px}\n'
+    '.cm-hl{margin:0 0 8px;font-weight:600}.cm-sec{margin-top:8px}.cm-sec h4{margin:0 0 4px;font-size:.9rem;color:var(--accent)}\n'
+    '.cm-note{font-size:.8rem;color:var(--muted);margin-top:10px}\n'
     '.pn-head{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}\n'
     '.pn-head h2{margin:0;font-size:1.1rem}\n#pnBody{padding:4px 16px 16px}\n'
     '.pn-ver{padding-block:12px;border-bottom:1px solid var(--line)}.pn-ver:last-child{border-bottom:0}\n'
@@ -147,6 +152,39 @@ $("pnBtn").addEventListener("click", () => {
 });
 $("pnClose").addEventListener("click", () => $("pnDlg").close());
 $("pnDlg").addEventListener("click", e => { if (e.target === $("pnDlg")) $("pnDlg").close(); });
+// 커뮤니티 소식: 클라우드 예약 작업이 4시간마다 community.json 을 갱신
+const LSC = "dosa-notebook-site-cm";
+let CM = null;
+function el(tag, cls, txt){ const x = document.createElement(tag); if (cls) x.className = cls; if (txt != null) x.textContent = txt; return x; }
+function cmRender(){
+  const box = $("cmBody"); box.textContent = "";
+  const es = (CM && CM.entries) || [];
+  if (!es.length) { box.textContent = "아직 정리된 소식이 없어요."; return; }
+  for (const e of es) {
+    const d = el("div", "pn-ver");
+    const h3 = el("h3", null, e.at || ""); h3.appendChild(el("small", null, (e.range ? e.range + " · " : "") + "디시 새 글 " + ((e.counts || {}).dc || 0) + "개" + (((e.counts || {}).forum) ? " · 공지 " + e.counts.forum + "개" : "")));
+    d.appendChild(h3);
+    if (e.headline) d.appendChild(el("p", "cm-hl", e.headline));
+    for (const s of e.sections || []) {
+      const sec = el("div", "cm-sec"); sec.appendChild(el("h4", null, s.h));
+      const ul = el("ul"); for (const it of s.items || []) ul.appendChild(el("li", null, it));
+      sec.appendChild(ul); d.appendChild(sec);
+    }
+    box.appendChild(d);
+  }
+  box.appendChild(el("p", "cm-note", "디시 도깨비의세계 갤러리와 공식 포럼 글을 자동으로 요약한 내용이에요. 커뮤니티 의견이라 사실과 다를 수 있어요."));
+}
+fetch("community.json?t=" + Date.now()).then(r => r.json()).then(j => {
+  CM = j;
+  let seen = null; try { seen = localStorage.getItem(LSC); } catch (e) {}
+  if (CM.entries && CM.entries.length && seen !== CM.entries[0].at) $("cmDot").hidden = false;
+}).catch(() => {});
+$("cmBtn").addEventListener("click", () => {
+  cmRender(); $("cmDlg").showModal();
+  if (CM && CM.entries && CM.entries.length) { $("cmDot").hidden = true; try { localStorage.setItem(LSC, CM.entries[0].at); } catch (e) {} }
+});
+$("cmClose").addEventListener("click", () => $("cmDlg").close());
+$("cmDlg").addEventListener("click", e => { if (e.target === $("cmDlg")) $("cmDlg").close(); });
 ''' + h[b:]
 
 # 추천 트리: 내 분석 결과가 있으면 그걸, 없으면 예시
