@@ -19,6 +19,23 @@ rep('<h1>도사 수첩</h1>',
     '<button type="button" id="loadBtn">불러오기</button></span>')
 rep('.bar .status{','.auth{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.auth input{width:120px}\n.bar .status{')
 
+# 패치노트: 버튼 + 창. 내용은 patchnotes.json(사이트 저장소)만 고치면 바뀜
+rep('<button class="primary" id="saveBtn" type="button">저장</button>',
+    '<button class="primary" id="saveBtn" type="button">저장</button>\n    <button type="button" id="pnBtn" class="pn-btn">패치노트<span class="pn-dot" id="pnDot" hidden></span></button>')
+rep('  <div class="cols">',
+    '  <dialog id="pnDlg" aria-labelledby="pnTitle"><div class="pn-head"><h2 id="pnTitle">패치노트</h2>'
+    '<button type="button" id="pnClose" aria-label="닫기">닫기</button></div><div id="pnBody">불러오는 중…</div></dialog>\n\n  <div class="cols">')
+rep('.bar .status{',
+    '.pn-btn{position:relative}.pn-dot{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:var(--warn)}\n'
+    '#pnDlg{width:min(560px,calc(100vw - 32px));max-height:80vh;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0}\n'
+    '#pnDlg::backdrop{background:rgba(0,0,0,.45)}\n'
+    '.pn-head{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}\n'
+    '.pn-head h2{margin:0;font-size:1.1rem}\n#pnBody{padding:4px 16px 16px}\n'
+    '.pn-ver{padding-block:12px;border-bottom:1px solid var(--line)}.pn-ver:last-child{border-bottom:0}\n'
+    '.pn-ver h3{margin:0 0 6px;font-size:.98rem}.pn-ver h3 small{color:var(--muted);font-weight:400;margin-left:6px}\n'
+    '.pn-ver ul{margin:0;padding-left:18px;display:grid;gap:3px;font-size:.9rem}\n'
+    '.bar .status{')
+
 # 계산에 쓰지 않는 캐릭터 능력치 칸은 숨김(저장된 값은 그대로 둠)
 rep('<button type="button" data-go="sec-stats">능력치</button>', '')
 rep('  <section id="sec-stats">', '  <section id="sec-stats" hidden>')
@@ -104,6 +121,32 @@ function poll(c, upd, n){
 }
 $("loadBtn").addEventListener("click", () => { const c = cred(); if (c) load(c); });
 $("nick").addEventListener("keydown", e => { if (e.key === "Enter") { const c = cred(); if (c) load(c); } });
+// 패치노트: 새 버전이 있으면 버튼에 점 표시, 열면 읽음 처리
+const LSP = "dosa-notebook-site-pn";
+let PN = null;
+function pnRender(){
+  const box = $("pnBody"); box.textContent = "";
+  if (!PN || !PN.length) { box.textContent = "패치노트를 불러오지 못했어요."; return; }
+  for (const v of PN) {
+    const d = document.createElement("div"); d.className = "pn-ver";
+    const h3 = document.createElement("h3"); h3.textContent = "v" + v.v;
+    const sm = document.createElement("small"); sm.textContent = v.date || ""; h3.appendChild(sm);
+    const ul = document.createElement("ul");
+    for (const it of v.items || []) { const li = document.createElement("li"); li.textContent = it; ul.appendChild(li); }
+    d.append(h3, ul); box.appendChild(d);
+  }
+}
+fetch("patchnotes.json?t=" + Date.now()).then(r => r.json()).then(j => {
+  PN = j;
+  let seen = null; try { seen = localStorage.getItem(LSP); } catch (e) {}
+  if (PN.length && seen !== PN[0].v) $("pnDot").hidden = false;
+}).catch(() => {});
+$("pnBtn").addEventListener("click", () => {
+  pnRender(); $("pnDlg").showModal();
+  if (PN && PN.length) { $("pnDot").hidden = true; try { localStorage.setItem(LSP, PN[0].v); } catch (e) {} }
+});
+$("pnClose").addEventListener("click", () => $("pnDlg").close());
+$("pnDlg").addEventListener("click", e => { if (e.target === $("pnDlg")) $("pnDlg").close(); });
 ''' + h[b:]
 
 # 추천 트리: 내 분석 결과가 있으면 그걸, 없으면 예시
