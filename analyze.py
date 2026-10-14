@@ -84,7 +84,7 @@ BUILDS = []
 NEAR = {"절명", "연타", "강타", "척살"}
 
 
-def load_builds(n=10):
+def load_builds(n=5):
     out = []
     for page in (1, 2):
         try:
