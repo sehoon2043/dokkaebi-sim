@@ -40,6 +40,13 @@ def setup(levels, steps=None):
         cd, tm = TR.effect(k["n"], (steps or {}).get(k["n"], 0), cd0)
         K[k["n"]] = {"style": st, "dmg": dmg * tm, "cd": cd, "mot": (n.get("m") or 500) / 1000, "hits": hits}
         if TGT.get(k["n"], 1) > 1: AOE.add(k["n"])
+    # 폭주·대폭발 외 궁극기는 일반 도술처럼 근사(쿨·피해·대상 수만)
+    for k in D["skills"]:
+        if not k["u"] or not k.get("num") or k["n"] in ("폭주", "대폭발"): continue
+        st = ST[k["st"]]; n = k["num"]
+        hits = sum((d["hits"] or 1) for d in n.get("dc") or []) or 1
+        K[k["n"]] = {"style": st, "dmg": total(k) * mult(st), "cd": n["cd"] or 60.0, "mot": (n.get("m") or 500) / 1000, "hits": hits}
+        if TGT.get(k["n"], 1) > 1: AOE.add(k["n"])
     POK = (total(BY["폭주"]) * mult("연타"), 50.0, 3.0, 11, 40.19)
     BIG = (total(BY["대폭발"]) * mult("파멸"), 138.0, 0.6)
 

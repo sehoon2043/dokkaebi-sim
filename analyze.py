@@ -79,6 +79,72 @@ def mob_search(owned, heals):
     return b, o, ult
 
 
+# ---------- 커뮤니티 덱 ----------
+BUILDS = []
+NEAR = {"절명", "연타", "강타", "척살"}
+
+
+def load_builds(n=10):
+    out = []
+    for page in (1, 2):
+        try:
+            req = urllib.request.Request(f"https://kkaebigg.com/guilds/api/deck-builds?sort=popular&page={page}",
+                                         headers={"Accept": "application/json", "User-Agent": "dokkaebi-dosa-analyzer"})
+            d = json.loads(urllib.request.urlopen(req, timeout=30).read().decode("utf-8"))
+        except Exception as e:
+            print("커뮤니티 덱 받기 실패", type(e).__name__)
+            break
+        out += d.get("items") or []
+        if page >= (d.get("pages") or 1):
+            break
+    out = [b for b in out if b.get("slots") and b.get("ult")]
+    out.sort(key=lambda b: -(b.get("likes") or 0))
+    return out[:n]
+
+
+def community(bd, owned, ref):
+    names = [x["name"] for x in bd["slots"] if x.get("name")]
+    ult = bd["ult"]["name"]
+    order = [x["name"] for x in (bd.get("order") or bd["slots"]) if x.get("name") in names]
+    order.insert(max(0, min(len(order), int(bd.get("ult_at") or 0))), ult)
+    known = [n for n in names if n in F.S.BY]
+    missing = [n for n in names if n not in owned]
+    near = sum(F.style(n) in NEAR for n in known) >= 4
+    tr = 0.7 if near else 0.3
+    lines, cmp = [], {}
+    mo = [x for x in order if x in M.K or x in ("폭주", "대폭발")]
+    if mo:
+        v = M.w(mo)
+        cmp["mob"] = v
+        lines.append(f"몰이 점수 {v:.0f}" + (f" (내 몰이 대비 {(v / ref['mob'] - 1) * 100:+.0f}%)" if ref["mob"] else ""))
+    fo = [x for x in order if x in F.S.BY]
+    if known:
+        v = F.kills(known, fo, tr)
+        cmp["field"] = v
+        lines.append(f"필드 1분에 약 {v:.1f}마리 (이동 {tr}초)" + (f" (내 평범 대비 {(v / ref['field'] - 1) * 100:+.0f}%)" if ref["field"] else ""))
+        v = F.boss_score(known, fo)
+        cmp["boss"] = v
+        lines.append("보스 점수" + (f" 내 최고 보스 트리 대비 {(v / ref['boss'] - 1) * 100:+.0f}%" if ref["boss"] else f" {v:.0f}"))
+    best = max(((k, cmp[k] / ref[k]) for k in cmp if ref.get(k)), key=lambda x: x[1], default=None)
+    label = {"mob": "몰이", "field": "필드 사냥", "boss": "보스"}
+    pts = []
+    if missing:
+        pts.append("안 배운 도술: " + ", ".join(missing) + " (배웠다고 가정하고 계산했습니다)")
+    else:
+        pts.append("필요한 도술을 모두 배웠습니다.")
+    if best:
+        k, r = best
+        pts.append(f"가장 잘 맞는 용도는 {label[k]}이고, 내 추천 트리보다 약 {abs(r - 1) * 100:.0f}% " + ("좋습니다." if r > 1 else "낮습니다.") if abs(r - 1) >= 0.01 else f"가장 잘 맞는 용도는 {label[k]}이고, 내 추천 트리와 비슷합니다.")
+    if ult not in ("폭주", "대폭발"):
+        pts.append(f"몰이 점수는 연타·파멸 궁극기 기준 모델이라, 이 덱의 궁극기({ult})·신식 효과와 이동하며 몹을 모으는 효과는 일부만 반영됩니다.")
+    pts.append("출처: 깨비지지 유저 덱 · 작성 " + (bd.get("author") or {}).get("name", "익명") + f" · 추천 {bd.get('likes', 0)}")
+    nm = bd.get("name") or "이름 없는 덱"
+    tab = nm if len(nm) <= 14 else nm[:13] + "…"
+    t = {"id": f"comm_{bd.get('id')}", "tab": tab, "sub": nm, "slots": names, "ult": ult, "order": order,
+         "stat": " · ".join(lines), "points": pts, "alt": [], "warn": bool(missing)}
+    return t
+
+
 # ---------- 결과 조립 ----------
 def tree(tid, tab, sub, order, ult, stat, points, alt=None):
     return {"id": tid, "tab": tab, "sub": sub, "slots": arrange(order, ult), "ult": ult, "order": order,
@@ -96,8 +162,11 @@ def analyze(data):
     trees = []
     notes = []
     # 몰이 0/1/2힐
+    ref = {"mob": None, "field": None, "boss": None}
     for h, tid, tab in ((0, "mob", "몰이"), (1, "mobheal", "몰이+힐"), (2, "mobheal2", "몰이+2힐")):
         r = mob_search(owned, h)
+        if r and h == 0:
+            ref["mob"] = r[0]
         if not r:
             if h == 0:
                 notes.append("몰이: 광역 도술이 부족해 계산하지 못했습니다(연타 광역 3개 또는 파멸 광역 3개 필요).")
@@ -162,7 +231,10 @@ def analyze(data):
                           stat(f"1분에 약 {b0:.1f}마리 (몹 사이 이동 0.7초)", f"촘촘하면(0.4초) 약 {k04:.1f}마리", f"흩어져 있으면(1초) 약 {k10:.1f}마리"),
                           ["몹이 촘촘히 붙어 있는 곳에서 가장 빠르고, 흩어져 있으면 평범(원거리)과 같거나 느립니다." if not heal else "힐을 넣을 거면 보통 평범+힐(원거리)이 더 빠르고 덜 맞습니다.",
                            "하단에 절명 3개를 두어 암습이 나갑니다. 암습은 순서 뒤쪽이라 다른 도술이 쿨일 때만 씁니다.", SEQ]))
+    ref["field"] = base
     bs = F.boss_search(owned, seeds=5)
+    if bs:
+        ref["boss"] = bs[0][0]
     if bs:
         b, c, o = bs[0]
         trees.append(tree("boss", "절명 보스", "절명 + 저격, 기습 안 씀 · 궁극기 암습", o, "암습", "보스·필드보스·레이드용",
@@ -181,6 +253,7 @@ def analyze(data):
                 if bs:
                     d = (b / bs[0][0] - 1) * 100
                     cmp_ = " · 절명 보스와 비슷" if abs(d) < 1 else f" · 절명 보스보다 약 {abs(d):.0f}% " + ("높음" if d > 0 else "낮음")
+                ref["boss"] = max(ref["boss"] or 0, b)
                 trees.append(tree("boss_" + st, st + " 보스", f"{st} 위주 · 궁극기 {u}", o, u, "보스·필드보스·레이드용" + cmp_,
                                   [f"하단에 {st} 3개를 두어 궁극기 {u}가 나갑니다.", SEQ]))
         if st not in ("절명", "저격", "파멸"):
@@ -191,6 +264,12 @@ def analyze(data):
                 trees.append(tree("hunt_" + st, st + " 사냥", f"{st} 위주 필드 사냥 · 궁극기 {u}", o, u,
                                   stat(f"1분에 약 {b:.1f}마리 (몹 사이 이동 {tr_}초)", rel(b, base, "평범 사냥")),
                                   [f"하단에 {st} 3개를 두어 궁극기 {u}가 나갑니다.", SEQ]))
+    # 커뮤니티 덱(깨비지지 유저 덱, 인기순) — 이 사람 강화·돌파 기준 점수와 내 추천 대비
+    for bd in BUILDS:
+        try:
+            trees.append(community(bd, owned, ref))
+        except Exception as e:
+            notes.append(f"커뮤니티 덱 '{bd.get('name', '')[:20]}' 계산 실패({type(e).__name__})")
     lv = " · ".join(f"{s} {levels[s]}" for s in STYLE_ORDER if levels.get(s))
     br = f" · 돌파 반영 {len(steps)}개" if steps else ""
     return {"updated": TODAY, "basis": (lv or "강화 정보 없음") + br + ", 도술 8칸", "trees": trees, "notes": notes}
@@ -209,6 +288,7 @@ def call(url, params=None, body=None):
 def main():
     if len(sys.argv) > 2 and sys.argv[1] == "--local":
         d = json.load(open(sys.argv[2], encoding="utf-8"))
+        BUILDS[:] = load_builds()
         t0 = time.time()
         res = analyze(d.get("data", d))
         print(json.dumps(res, ensure_ascii=False, indent=1))
@@ -216,6 +296,8 @@ def main():
         return
     url = os.environ["DOSA_URL"]
     key = os.environ["DOSA_KEY"]
+    BUILDS[:] = load_builds()
+    print("커뮤니티 덱", len(BUILDS))
     done = {}
     for rnd in range(6):   # 분석 중에 새로 저장된 것도 이어서 처리
         r = call(url, {"a": "pending", "key": key})

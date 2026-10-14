@@ -15,5 +15,5 @@ rep(".tab-sub{font-weight:400;font-size:.8em;opacity:.85}",
     ".tab-sub{font-weight:400;font-size:.8em;opacity:.85}\n.tgt{display:inline-block;font-size:.66rem;line-height:1.5;padding:0 5px;margin-left:4px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;vertical-align:1px;font-weight:500}"
     ".tgt.aoe{border-color:var(--accent);color:var(--accent)}")
 rep('    const g = GRP[t.id] || "기타";',
-    '    const g = GRP[t.id] || (t.id.startsWith("boss_") ? "보스" : t.id.startsWith("hunt_") ? "필드 사냥" : "기타");')
+    '    const g = GRP[t.id] || (t.id.startsWith("boss_") ? "보스" : t.id.startsWith("hunt_") ? "필드 사냥" : t.id.startsWith("comm_") ? "커뮤니티 덱" : "기타");')
 open(p, "w", encoding="utf-8").write(h); print("patched", len(T))
