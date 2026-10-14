@@ -100,45 +100,68 @@ def analyze(data):
             continue
         b, o, ult = r
         trees.append(tree(tid, tab, f"힐 {h}개 · 궁극기 {ult}" if h else f"힐 없음 · 궁극기 {ult}", o, ult,
-                          f"몹 5마리 뭉친 조건 몰이 점수 {b:.0f}", [
+                          "몹 5마리가 뭉쳐 있는 조건", [
                               f"하단에 {F.style(ult)} 3개를 두어 궁극기 {ult}가 나갑니다.",
                               "영혼 소용돌이가 있으면 맨 앞에서 몹을 모으고 방어력을 깎습니다." if "영혼 소용돌이" in o else "영혼 소용돌이를 배우면 몰이가 더 편해집니다.",
                               "칸은 사용 순서대로 놓았습니다."]))
-    # 필드 사냥: 몹 체력 기준(REF)은 이 사람의 원거리 단일 트리 초당 피해
+    # 필드 사냥: 몹 체력 기준(REF)은 이 사람의 평범(원거리) 트리 초당 피해
     F.REF[0] = 290.0
     rng = F.search(owned, "ranged", False, seeds=4)
     if rng:
         F.REF[0] = F.dps_rate(rng[0][1], rng[0][2])
         rng = F.search(owned, "ranged", False, seeds=4)
     base = rng[0][0] if rng else None
+    SEQ = "칸은 사용 순서대로 놓았습니다."
+
+    def rel(v, ref, name):
+        if not ref:
+            return None
+        d = (v / ref - 1) * 100
+        return f"{name}보다 약 {abs(d):.0f}% " + ("빠름" if d > 0 else "느림") if abs(d) >= 1 else f"{name}과 비슷"
+
+    def ult_of(o, c):
+        return next((x for x in o if F.S.BY[x]["u"]), None) or F.S.ult_for(c)
+
+    def stat(*parts):
+        return " · ".join(x for x in parts if x)
+
+    pu = F.search(owned, "pure", False, seeds=4)
+    if pu:
+        b0, c, o = pu[0]; u = ult_of(o, c)
+        trees.append(tree("pure", "완전 단일", f"단일 대상 도술만 · 궁극기 {u}", o, u,
+                          stat(f"1분에 약 {b0:.1f}마리 (몹 1~5초 처치, 몹 사이 이동 0.3초)", rel(b0, base, "평범 사냥")),
+                          ["광역 도술 없이 한 마리만 때리는 트리입니다. 옆 몹을 건드리기 싫거나 몹이 띄엄띄엄 있을 때 쓰세요.", SEQ]))
+    puh = F.search(owned, "pure", True, seeds=3)
+    if puh:
+        b0, c, o = puh[0]; u = ult_of(o, c)
+        trees.append(tree("pureh", "완전 단일+힐", f"단일 대상 도술만 + 생명의 축복 · 궁극기 {u}", o, u,
+                          stat(f"1분에 약 {b0:.1f}마리", rel(b0, pu[0][0] if pu else None, "완전 단일")), ["물약이 많이 들 때 쓰세요.", SEQ]))
     if rng:
-        b, c, o = rng[0]
-        ult = next((x for x in o if F.S.BY[x]["u"]), None) or F.S.ult_for(c)
-        trees.append(tree("single", "단일", f"원거리 필드 사냥 · 궁극기 {ult}", o, ult, f"처치 속도 {b:.1f}마리/분 (몹 1~5초 처치, 이동 0.3초)",
-                          ["몹 한 마리씩 잡는 필드 기준이고, 광역 도술은 몹이 붙어 있으면 덤으로 더 맞습니다.", "칸은 사용 순서대로 놓았습니다."],
-                          [f"2위({(rng[1][0] / b - 1) * 100:+.1f}%): {', '.join(rng[1][1])}"] if len(rng) > 1 else []))
+        b0, c, o = rng[0]; u = ult_of(o, c)
+        trees.append(tree("single", "평범", f"한 마리씩 잡지만 광역 도술 섞음 · 궁극기 {u}", o, u,
+                          stat(f"1분에 약 {b0:.1f}마리 (몹 1~5초 처치, 몹 사이 이동 0.3초)", rel(b0, pu[0][0] if pu else None, "완전 단일")),
+                          ["광역 도술은 몹이 붙어 있으면 덤으로 더 맞습니다. 계산은 몹 한 마리 기준입니다.", f"하단에 {F.style(u)} 3개를 두어 궁극기 {u}가 나갑니다.", SEQ],
+                          [f"2위({(rng[1][0] / b0 - 1) * 100:+.1f}%): {', '.join(rng[1][1])}"] if len(rng) > 1 else []))
     rh = F.search(owned, "ranged", True, seeds=4)
     if rh:
-        b, c, o = rh[0]
-        ult = F.S.ult_for(c)
-        trees.append(tree("singleh", "단일+힐", f"원거리 필드 사냥 힐 1개 · 궁극기 {ult}", o, ult,
-                          f"처치 속도 {b:.1f}마리/분" + (f" (힐 없는 단일 대비 {(b / base - 1) * 100:+.1f}%)" if base else ""),
-                          ["물약이 많이 들면 이 트리를 쓰세요.", "칸은 사용 순서대로 놓았습니다."]))
-    me = F.search(owned, "melee", False, seeds=4)
-    if me:
-        b, c, o = me[0]
+        b0, c, o = rh[0]; u = ult_of(o, c)
+        trees.append(tree("singleh", "평범+힐", f"평범 사냥 + 생명의 축복 · 궁극기 {u}", o, u,
+                          stat(f"1분에 약 {b0:.1f}마리", rel(b0, base, "평범 사냥")), ["물약이 많이 들면 이 트리를 쓰세요. 원거리라 근접 절명보다 덜 맞습니다.", SEQ]))
+    for heal, tid, tab in ((False, "jhunt", "절명"), (True, "jhunt_h", "절명+힐")):
+        me = F.search(owned, "melee", heal, seeds=4 if not heal else 3)
+        if not me:
+            continue
+        b0, c, o = me[0]
         k04 = F.kills(c, o, 0.4)
         k10 = F.kills(c, o, 1.0)
-        rel = (lambda v: f"{(v / base - 1) * 100:+.0f}%") if base else (lambda v: f"{v:.1f}마리/분")
-        trees.append(tree("jhunt", "절명 사냥", "근접 필드 사냥 · 궁극기 암습", o, "암습",
-                          f"처치 속도 {b:.1f}마리/분 (몹 사이 이동 0.7초)" + (f" · 원거리 단일 대비 {rel(b)}" if base else ""),
-                          ["하단에 절명 3개를 두어 암습이 나갑니다. 암습은 순서 뒤쪽이라 다른 도술이 쿨일 때만 씁니다.",
-                           f"몹이 촘촘하면(이동 0.4초) {rel(k04)}, 흩어져 있으면(1초) {rel(k10)}입니다.",
-                           "칸은 사용 순서대로 놓았습니다."]))
+        trees.append(tree(tid, tab, "근접 필드 사냥" + (", 힐 1개" if heal else ", 힐 없음") + " · 궁극기 암습", o, "암습",
+                          stat(f"1분에 약 {b0:.1f}마리 (몹 사이 이동 0.7초)", f"촘촘하면(0.4초) 약 {k04:.1f}마리", f"흩어져 있으면(1초) 약 {k10:.1f}마리"),
+                          ["몹이 촘촘히 붙어 있는 곳에서 가장 빠르고, 흩어져 있으면 평범(원거리)과 같거나 느립니다." if not heal else "힐을 넣을 거면 보통 평범+힐(원거리)이 더 빠르고 덜 맞습니다.",
+                           "하단에 절명 3개를 두어 암습이 나갑니다. 암습은 순서 뒤쪽이라 다른 도술이 쿨일 때만 씁니다.", SEQ]))
     bs = F.boss_search(owned, seeds=5)
     if bs:
         b, c, o = bs[0]
-        trees.append(tree("boss", "보스", "절명 + 저격 보스, 기습 안 씀 · 궁극기 암습", o, "암습", f"보스 DPS 점수 {b:.0f}",
+        trees.append(tree("boss", "절명 보스", "절명 + 저격, 기습 안 씀 · 궁극기 암습", o, "암습", "보스·필드보스·레이드용",
                           ["보스·필드보스·레이드용입니다. 하단에 절명 3개를 두어 암습이 나갑니다.", "칸은 사용 순서대로 놓았습니다."],
                           [f"2위({(bs[1][0] / b - 1) * 100:+.1f}%): {', '.join(bs[1][1])}"] if len(bs) > 1 else []))
     lv = " · ".join(f"{s} {levels[s]}" for s in STYLE_ORDER if levels.get(s))

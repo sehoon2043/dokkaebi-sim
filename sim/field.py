@@ -1,7 +1,9 @@
 # 필드 사냥 처치 속도 모델 + 보스 DPS 모델 (jmodel 기반)
 # 처치 속도: 피해 이벤트를 몹 체력 H씩 순서대로 적용(남는 피해 버림), 처치마다 이동 시간 추가
-import inspect, random
+import inspect, json, os, random
 import jmodel as S
+
+TGT = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "targets.json"), encoding="utf-8"))
 
 S.FORMS_STYLE_ONLY, S.FORMS_PER_CAST, S.STRICT_MAX = False, True, True
 AMP0 = dict(S.AMP_HIT)
@@ -167,6 +169,8 @@ def search(owned, kind, heal, seeds=5, travel=None):
         J = [n for n in cand if style(n) == "절명"]
         if len(J) < 3:
             return []
+    elif kind == "pure":
+        cand = [n for n in P if style(n) in ("저격", "파멸") and TGT.get(n, 1) == 1]
     else:
         cand = [n for n in P if style(n) in ("저격", "파멸")]
     need = 7 if heal_n else 8
