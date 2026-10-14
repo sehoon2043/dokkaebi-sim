@@ -33,6 +33,14 @@ rep('.bar .status{',
     '#pnDlg,#cmDlg{width:min(600px,calc(100vw - 32px));max-height:80vh;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0}\n'
     '#pnDlg::backdrop,#cmDlg::backdrop{background:rgba(0,0,0,.45)}\n#cmBody{padding:4px 16px 16px}\n'
     '.cm-hl{margin:0 0 8px;font-weight:600}.cm-sec{margin-top:8px}.cm-sec h4{margin:0 0 4px;font-size:.9rem;color:var(--accent)}\n'
+    '.cm-top{margin:12px 0 4px;padding:10px 12px;border-radius:8px;background:var(--accent-soft);font-weight:600;line-height:1.45}\n'
+    '.cm-meta{font-size:.8rem;color:var(--muted);margin:6px 0 2px}\n'
+    '.cm-list{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:.9rem;line-height:1.45}\n'
+    '.cm-list li{display:flex;gap:6px;align-items:baseline}\n'
+    '.cm-k{flex:none;font-size:.7rem;font-weight:600;padding:1px 6px;border-radius:9px;border:1px solid currentColor;color:var(--muted)}\n'
+    '.cm-k.k-official{color:var(--accent)}.cm-k.k-report{color:var(--ok)}.cm-k.k-warn{color:var(--warn)}\n'
+    '.cm-hist{margin-top:14px;border-top:1px solid var(--line);padding-top:8px}.cm-hist summary{cursor:pointer;font-size:.88rem;color:var(--muted)}\n'
+    '.cm-hist .pn-ver{font-size:.88rem}\n'
     '.cm-note{font-size:.8rem;color:var(--muted);margin-top:10px}\n'
     '.pn-head{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}\n'
     '.pn-head h2{margin:0;font-size:1.1rem}\n#pnBody{padding:4px 16px 16px}\n'
@@ -156,32 +164,54 @@ $("pnDlg").addEventListener("click", e => { if (e.target === $("pnDlg")) $("pnDl
 const LSC = "dosa-notebook-site-cm";
 let CM = null;
 function cel(tag, cls, txt){ const x = document.createElement(tag); if (cls) x.className = cls; if (txt != null) x.textContent = txt; return x; }
+const CMK = {"공식": "k-official", "제보": "k-report", "의견": "", "주의": "k-warn"};
+function cmItem(it){
+  const li = cel("li");
+  const t = typeof it === "string" ? {t: it} : it;
+  if (t.k) li.appendChild(cel("span", "cm-k " + (CMK[t.k] || ""), t.k));
+  li.appendChild(cel("span", null, t.t));
+  return li;
+}
+function cmSections(d, secs){
+  for (const s of secs || []) {
+    const sec = cel("div", "cm-sec"); sec.appendChild(cel("h4", null, s.h));
+    const ul = cel("ul", "cm-list"); for (const it of s.items || []) ul.appendChild(cmItem(it));
+    sec.appendChild(ul); d.appendChild(sec);
+  }
+}
 function cmRender(){
   const box = $("cmBody"); box.textContent = "";
-  const es = (CM && CM.entries) || [];
-  if (!es.length) { box.textContent = "아직 정리된 소식이 없어요."; return; }
-  for (const e of es) {
-    const d = cel("div", "pn-ver");
-    const h3 = cel("h3", null, e.at || ""); h3.appendChild(cel("small", null, (e.range ? e.range + " · " : "") + "디시 새 글 " + ((e.counts || {}).dc || 0) + "개" + (((e.counts || {}).forum) ? " · 공지 " + e.counts.forum + "개" : "")));
-    d.appendChild(h3);
-    if (e.headline) d.appendChild(cel("p", "cm-hl", e.headline));
-    for (const s of e.sections || []) {
-      const sec = cel("div", "cm-sec"); sec.appendChild(cel("h4", null, s.h));
-      const ul = cel("ul"); for (const it of s.items || []) ul.appendChild(cel("li", null, it));
-      sec.appendChild(ul); d.appendChild(sec);
-    }
-    box.appendChild(d);
+  const sm = CM && CM.summary, es = (CM && CM.entries) || [];
+  if (!sm && !es.length) { box.textContent = "아직 정리된 소식이 없어요."; return; }
+  if (sm) {
+    const c = sm.counts || {};
+    box.appendChild(cel("p", "cm-meta", (sm.range || "") + " 합산 · 디시 글 " + (c.dc || 0).toLocaleString() + "개" + (c.forum ? " · 공지 " + c.forum + "개" : "") + " · " + (sm.at || "") + " 갱신"));
+    if (sm.headline) box.appendChild(cel("p", "cm-top", sm.headline));
+    cmSections(box, sm.sections);
   }
-  box.appendChild(cel("p", "cm-note", "디시 도깨비의세계 갤러리와 공식 포럼 글을 자동으로 요약한 내용이에요. 커뮤니티 의견이라 사실과 다를 수 있어요."));
+  if (es.length) {
+    const det = cel("details", "cm-hist"); det.appendChild(cel("summary", null, "구간별 기록 " + es.length + "개 보기"));
+    for (const e of es) {
+      const d = cel("div", "pn-ver");
+      const h3 = cel("h3", null, e.at || ""); h3.appendChild(cel("small", null, (e.range ? e.range + " · " : "") + "디시 새 글 " + ((e.counts || {}).dc || 0) + "개"));
+      d.appendChild(h3);
+      if (e.headline) d.appendChild(cel("p", "cm-hl", e.headline));
+      cmSections(d, e.sections);
+      det.appendChild(d);
+    }
+    box.appendChild(det);
+  }
+  box.appendChild(cel("p", "cm-note", "디시 도깨비의세계 갤러리와 공식 포럼 글을 자동으로 요약한 내용이에요. '공식' 표시 외에는 커뮤니티 의견이라 사실과 다를 수 있어요."));
 }
+const cmStamp = () => (CM && CM.summary && CM.summary.at) || (CM && CM.entries && CM.entries.length && CM.entries[0].at) || null;
 fetch("community.json?t=" + Date.now()).then(r => r.json()).then(j => {
   CM = j;
   let seen = null; try { seen = localStorage.getItem(LSC); } catch (e) {}
-  if (CM.entries && CM.entries.length && seen !== CM.entries[0].at) $("cmDot").hidden = false;
+  if (cmStamp() && seen !== cmStamp()) $("cmDot").hidden = false;
 }).catch(() => {});
 $("cmBtn").addEventListener("click", () => {
   cmRender(); $("cmDlg").showModal();
-  if (CM && CM.entries && CM.entries.length) { $("cmDot").hidden = true; try { localStorage.setItem(LSC, CM.entries[0].at); } catch (e) {} }
+  if (cmStamp()) { $("cmDot").hidden = true; try { localStorage.setItem(LSC, cmStamp()); } catch (e) {} }
 });
 $("cmClose").addEventListener("click", () => $("cmDlg").close());
 $("cmDlg").addEventListener("click", e => { if (e.target === $("cmDlg")) $("cmDlg").close(); });
