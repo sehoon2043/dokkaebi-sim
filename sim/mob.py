@@ -1,6 +1,7 @@
 # 몰이 사냥 모델 (몹 n마리 뭉침): 파멸 궁(대폭발+요기범람) / 연타 궁(폭주+격노)
 # 계수는 data/skills.json(10/14 인게임 툴팁 0강 환산) × (1 + 스타일 강화 계수)
 import json, os, random
+import transcend as TR
 _D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
 D = json.load(open(os.path.join(_D, "skills.json"), encoding="utf-8"))
 TGT = json.load(open(os.path.join(_D, "targets.json"), encoding="utf-8"))
@@ -25,8 +26,8 @@ def total(k):
         c = n["dc"][-1]; return c["basic_coefficient"] * (c["hits"] or 1)
     return 0.0
 
-def setup(levels):
-    """스타일 강화 레벨(dict)로 K·POK·BIG 구성"""
+def setup(levels, steps=None):
+    """스타일 강화 레벨(dict)·돌파 단계(dict)로 K·POK·BIG 구성"""
     global POK, BIG
     K.clear(); AOE.clear()
     def mult(st): return 1 + LVC.get(int(levels.get(st, 0) or 0), 0.0)
@@ -35,7 +36,9 @@ def setup(levels):
         st = ST[k["st"]]; n = k["num"]
         hits = sum((d["hits"] or 1) for d in n.get("dc") or []) or 1
         dmg = 0.0 if k["n"] in HEALS else total(k) * mult(st)
-        K[k["n"]] = {"style": st, "dmg": dmg, "cd": n["cd"] or 30.0, "mot": (n.get("m") or 500) / 1000, "hits": hits}
+        cd0 = n["cd"] or 30.0
+        cd, tm = TR.effect(k["n"], (steps or {}).get(k["n"], 0), cd0)
+        K[k["n"]] = {"style": st, "dmg": dmg * tm, "cd": cd, "mot": (n.get("m") or 500) / 1000, "hits": hits}
         if TGT.get(k["n"], 1) > 1: AOE.add(k["n"])
     POK = (total(BY["폭주"]) * mult("연타"), 50.0, 3.0, 11, 40.19)
     BIG = (total(BY["대폭발"]) * mult("파멸"), 138.0, 0.6)

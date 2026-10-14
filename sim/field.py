@@ -1,7 +1,9 @@
 # 필드 사냥 처치 속도 모델 + 보스 DPS 모델 (jmodel 기반)
 # 처치 속도: 피해 이벤트를 몹 체력 H씩 순서대로 적용(남는 피해 버림), 처치마다 이동 시간 추가
 import inspect, json, os, random
+import copy
 import jmodel as S
+import transcend as TR
 
 TGT = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "targets.json"), encoding="utf-8"))
 
@@ -28,6 +30,26 @@ def set_levels(levels):
     LV.clear()
     LV.update({k: int(v or 0) for k, v in levels.items()})
     LV["*"] = 0
+
+
+_ORIG = {k["n"]: copy.deepcopy(k["num"]) for k in S.D["skills"] if k.get("num")}
+
+
+def set_steps(steps):
+    """돌파 단계 반영: 쿨타임과 피해 계수를 그 사람 기준으로 바꾼다(매번 원본에서 다시 계산)"""
+    for k in S.D["skills"]:
+        if not k.get("num"):
+            continue
+        k["num"] = copy.deepcopy(_ORIG[k["n"]])
+        st = (steps or {}).get(k["n"], 0)
+        if st and k["num"].get("cd"):
+            cd, mult = TR.effect(k["n"], st, k["num"]["cd"])
+            k["num"]["cd"] = cd
+            for d in k["num"].get("dc") or []:
+                d["basic_coefficient"] *= mult
+            if k["num"].get("total"):
+                k["num"]["total"] *= mult
+        S.BY[k["n"]] = k
 
 
 def style(n):
@@ -256,10 +278,10 @@ def boss_opt(names, start):
     return b, o
 
 
-def boss_search(owned, seeds=6):
-    """절명 궁(암습) 보스 트리. 하단 5칸에 절명 3개 이상"""
+def boss_search(owned, seeds=6, st="절명"):
+    """스타일 st 궁극기 보스 트리. 하단 5칸에 st 3개 이상"""
     cand = [n for n in pool(owned) if n not in ("기습",) and n not in HEALS]
-    J = [n for n in cand if style(n) == "절명"]
+    J = [n for n in cand if style(n) == st]
     if len(J) < 3 or len(cand) < 8:
         return []
     found = {}
@@ -277,15 +299,64 @@ def boss_search(owned, seeds=6):
                         continue
                     t = c[:]
                     t[i] = n
-                    if sum(style(x) == "절명" for x in t[:5]) < 3:
+                    if sum(style(x) == st for x in t[:5]) < 3:
                         continue
                     v = _boss_quick(t)
                     if v > best + 1e-6:
                         best, c, imp = v, t, True
         found[tuple(sorted(c))] = c
     rs = []
+    ult = S.ULT_OF.get(st)
     for c in found.values():
-        b, o = boss_opt(c, ["암습"] + c)
+        b, o = boss_opt(c, ([ult] if ult else []) + c)
         rs.append((b, c, o))
+    rs.sort(key=lambda x: -x[0])
+    return rs
+
+
+def style_hunt(owned, st, seeds=4, heal=False):
+    """스타일 st 궁극기 필드 사냥 트리(하단 st 3개 이상). 근거리 0.7초·원거리 0.3초·그 외 0.5초 이동"""
+    P = [n for n in pool(owned) if n != "기습" and n not in HEALS]
+    J = [n for n in P if style(n) == st]
+    ult = S.ULT_OF.get(st)
+    need = 7 if heal else 8
+    if len(J) < 3 or len(P) < need or not ult:
+        return []
+    heal_n = "생명의 축복" if heal and "생명의 축복" in owned else None
+    if heal and not heal_n:
+        return []
+    kind = {"절명": "근", "연타": "근", "강타": "근", "척살": "근", "저격": "원", "주술": "원", "파멸": "원"}.get(st)
+    tr = 0.7 if kind == "근" else (0.3 if kind == "원" else 0.5)
+
+    def ok(t):
+        return sum(style(x) == st for x in t[:5] if x not in HEALS) >= 3
+
+    found = {}
+    for s0 in range(seeds):
+        r = random.Random(s0)
+        b3 = r.sample(J, 3)
+        c = b3 + r.sample([n for n in P if n not in b3], need - 3) + ([heal_n] if heal_n else [])
+        best = kills(c, sorted(c, key=lambda x: 0 if x in HEALS else -(S.total(S.BY[x]) / S.BY[x]["num"]["cd"])) + [ult], tr, Ps=HUNT_P[:1], syn=(False,))
+        imp = True
+        while imp:
+            imp = False
+            for i in r.sample(range(len(c)), len(c)):
+                if c[i] == heal_n:
+                    continue
+                for n in P:
+                    if n in c:
+                        continue
+                    t = c[:]
+                    t[i] = n
+                    if not ok(t):
+                        continue
+                    v = kills(t, sorted(t, key=lambda x: 0 if x in HEALS else -(S.total(S.BY[x]) / S.BY[x]["num"]["cd"])) + [ult], tr, Ps=HUNT_P[:1], syn=(False,))
+                    if v > best + 1e-6:
+                        best, c, imp = v, t, True
+        found[tuple(sorted(c))] = c
+    rs = []
+    for c in found.values():
+        b, o = opt_kills(c, c[:1] + [ult] + c[1:], tr)
+        rs.append((b, c, o, tr))
     rs.sort(key=lambda x: -x[0])
     return rs

@@ -6,6 +6,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "sim"))
 import field as F
 import mob as M
+import transcend as TR
 
 TODAY = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 9 * 3600))
 STYLE_ORDER = ["절명", "연타", "강타", "척살", "저격", "주술", "파멸", "강인", "기동", "헌신", "기만", "제압"]
@@ -86,9 +87,12 @@ def tree(tid, tab, sub, order, ult, stat, points, alt=None):
 
 def analyze(data):
     levels = {k: int(v or 0) for k, v in (data.get("levels") or {}).items() if str(v).strip() != ""}
-    owned = set((data.get("owned") or {}).keys())
+    owned_map = data.get("owned") or {}
+    owned = set(owned_map.keys())
+    steps = TR.steps_of(owned_map)
     F.set_levels(levels)
-    M.setup(levels)
+    F.set_steps(steps)
+    M.setup(levels, steps)
     trees = []
     notes = []
     # 몰이 0/1/2힐
@@ -164,8 +168,32 @@ def analyze(data):
         trees.append(tree("boss", "절명 보스", "절명 + 저격, 기습 안 씀 · 궁극기 암습", o, "암습", "보스·필드보스·레이드용",
                           ["보스·필드보스·레이드용입니다. 하단에 절명 3개를 두어 암습이 나갑니다.", "칸은 사용 순서대로 놓았습니다."],
                           [f"2위({(bs[1][0] / b - 1) * 100:+.1f}%): {', '.join(bs[1][1])}"] if len(bs) > 1 else []))
+    # 주력 스타일별 트리: 공격 도술 3개 이상 배운 스타일마다 보스(궁극기 그 스타일) · 사냥
+    P = F.pool(owned)
+    cnt = {st: sum(F.style(n) == st for n in P if n not in F.HEALS) for st in STYLE_ORDER}
+    for st in sorted([x for x in STYLE_ORDER if cnt[x] >= 3], key=lambda x: -cnt[x]):
+        if st != "절명":
+            bs2 = F.boss_search(owned, seeds=3, st=st)
+            if bs2:
+                b, c, o = bs2[0]
+                u = F.S.ULT_OF.get(st)
+                cmp_ = ""
+                if bs:
+                    d = (b / bs[0][0] - 1) * 100
+                    cmp_ = " · 절명 보스와 비슷" if abs(d) < 1 else f" · 절명 보스보다 약 {abs(d):.0f}% " + ("높음" if d > 0 else "낮음")
+                trees.append(tree("boss_" + st, st + " 보스", f"{st} 위주 · 궁극기 {u}", o, u, "보스·필드보스·레이드용" + cmp_,
+                                  [f"하단에 {st} 3개를 두어 궁극기 {u}가 나갑니다.", SEQ]))
+        if st not in ("절명", "저격", "파멸"):
+            hs = F.style_hunt(owned, st, seeds=3)
+            if hs:
+                b, c, o, tr_ = hs[0]
+                u = F.S.ULT_OF.get(st)
+                trees.append(tree("hunt_" + st, st + " 사냥", f"{st} 위주 필드 사냥 · 궁극기 {u}", o, u,
+                                  stat(f"1분에 약 {b:.1f}마리 (몹 사이 이동 {tr_}초)", rel(b, base, "평범 사냥")),
+                                  [f"하단에 {st} 3개를 두어 궁극기 {u}가 나갑니다.", SEQ]))
     lv = " · ".join(f"{s} {levels[s]}" for s in STYLE_ORDER if levels.get(s))
-    return {"updated": TODAY, "basis": (lv or "강화 정보 없음") + ", 도술 8칸", "trees": trees, "notes": notes}
+    br = f" · 돌파 반영 {len(steps)}개" if steps else ""
+    return {"updated": TODAY, "basis": (lv or "강화 정보 없음") + br + ", 도술 8칸", "trees": trees, "notes": notes}
 
 
 # ---------- Apps Script 통신 ----------
