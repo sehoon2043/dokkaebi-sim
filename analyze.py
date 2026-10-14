@@ -80,6 +80,26 @@ def mob_search(owned, heals):
     return b, o, ult
 
 
+def mob_add_heal(prev, owned, heal):
+    """몰이 트리에서 한 칸만 힐로 바꾼다(나머지 도술·순서는 그대로). 소용돌이·궁극기·기존 힐은 유지"""
+    if not prev or heal not in owned:
+        return None
+    _, o, ult = prev
+    st = F.style(ult)
+    best = None
+    for i, x in enumerate(o):
+        if x == ult or x in M.HEALS or x == "영혼 소용돌이":
+            continue
+        t = o[:]
+        t[i] = heal
+        if sum(F.style(k) == st for k in t if k != ult and k not in M.HEALS) < 3 or not M.valid_order(t):
+            continue
+        v = M.w(t)
+        if not best or v > best[0]:
+            best = (v, t, ult)
+    return best
+
+
 # ---------- 커뮤니티 덱 ----------
 BUILDS = []
 NEAR = {"절명", "연타", "강타", "척살"}
@@ -207,7 +227,12 @@ def analyze(data):
     # 몰이 0/1/2힐
     ref = {"mob": None, "field": None, "boss": None}
     for h, tid, tab in ((0, "mob", "몰이"), (1, "mobheal", "몰이+힐"), (2, "mobheal2", "몰이+2힐")):
-        r = mob_search(owned, h)
+        if h == 0:
+            r = mob_search(owned, 0)
+            prev = r
+        else:
+            r = mob_add_heal(prev, owned, ("생명의 축복", "생명의 흐름")[h - 1])
+            prev = r
         if r and h == 0:
             ref["mob"] = r[0]
         if not r:
@@ -219,7 +244,7 @@ def analyze(data):
                           "몹 5마리가 뭉쳐 있는 조건" + (" · 공간 결계로 몹이 더 잘 모임(실측 보정)" if M.gathered(o) else ""), [
                               f"하단에 {F.style(ult)} 3개를 두어 궁극기 {EX.josa(ult, '이/가')} 나갑니다.",
                               "영혼 소용돌이가 있으면 맨 앞에서 몹을 모으고 방어력을 깎습니다." if "영혼 소용돌이" in o else "영혼 소용돌이를 배우면 몰이가 더 편해집니다.",
-                              "칸은 사용 순서대로 놓았습니다."] + (
+                              "칸은 사용 순서대로 놓았습니다." if not h else f"몰이{'+힐' if h == 2 else ''} 트리에서 한 칸만 {EX.josa(('생명의 축복', '생명의 흐름')[h - 1], '으로/로')} 바꾸고 나머지는 그대로입니다."] + (
                               ["공간 결계는 피해보다 몹을 모으는 효과가 커서 넣었습니다(엽전 비경 실측 기준 약 +6.5%)."] if M.gathered(o) else [])))
     # 필드 사냥: 몹 체력 기준(REF)은 이 사람의 평범(원거리) 트리 초당 피해
     F.REF[0] = 290.0
