@@ -138,7 +138,7 @@ def community(bd, owned, ref):
         pts.append(f"가장 잘 맞는 용도는 {label[k]}이고, 내 추천 트리보다 약 {abs(r - 1) * 100:.0f}% " + ("좋습니다." if r > 1 else "낮습니다.") if abs(r - 1) >= 0.01 else f"가장 잘 맞는 용도는 {label[k]}이고, 내 추천 트리와 비슷합니다.")
     if ult not in ("폭주", "대폭발"):
         pts.append(f"몰이 점수는 연타·파멸 궁극기 기준 모델이라, 이 덱의 궁극기({ult})·신식 효과와 이동하며 몹을 모으는 효과는 일부만 반영됩니다.")
-    pts.append("출처: 깨비지지 유저 덱 · 작성 " + (bd.get("author") or {}).get("name", "익명") + f" · 추천 {bd.get('likes', 0)}")
+    pts.append("인기 유저 덱 · 작성 " + (bd.get("author") or {}).get("name", "익명") + f" · 추천 {bd.get('likes', 0)}")
     nm = bd.get("name") or "이름 없는 덱"
     tab = nm if len(nm) <= 14 else nm[:13] + "…"
     t = {"id": f"comm_{bd.get('id')}", "tab": tab, "sub": nm, "slots": names, "ult": ult, "order": order,
