@@ -138,7 +138,7 @@ def analyze(data):
     bs = F.boss_search(owned, seeds=5)
     if bs:
         b, c, o = bs[0]
-        trees.append(tree("boss", "보스", "절명 + 저격 보스 · 궁극기 암습", o, "암습", f"보스 DPS 점수 {b:.0f}",
+        trees.append(tree("boss", "보스", "절명 + 저격 보스, 기습 안 씀 · 궁극기 암습", o, "암습", f"보스 DPS 점수 {b:.0f}",
                           ["보스·필드보스·레이드용입니다. 하단에 절명 3개를 두어 암습이 나갑니다.", "칸은 사용 순서대로 놓았습니다."],
                           [f"2위({(bs[1][0] / b - 1) * 100:+.1f}%): {', '.join(bs[1][1])}"] if len(bs) > 1 else []))
     lv = " · ".join(f"{s} {levels[s]}" for s in STYLE_ORDER if levels.get(s))
@@ -165,18 +165,28 @@ def main():
         return
     url = os.environ["DOSA_URL"]
     key = os.environ["DOSA_KEY"]
-    r = call(url, {"a": "pending", "key": key})
-    if not r.get("ok"):
-        print("pending 실패", r.get("err"))
-        sys.exit(1)
-    print("대기", len(r["list"]))
-    for p in r["list"]:
+    done = {}
+    for rnd in range(6):   # 분석 중에 새로 저장된 것도 이어서 처리
+        r = call(url, {"a": "pending", "key": key})
+        if not r.get("ok"):
+            print("pending 실패", r.get("err"))
+            sys.exit(1)
+        todo = [p for p in r["list"] if done.get(p["nick"]) != str(p["updatedAt"])]
+        print("대기", len(todo))
+        if not todo:
+            break
+        run_list(todo, url, key, done)
+
+
+def run_list(todo, url, key, done):
+    for p in todo:
         t0 = time.time()
         try:
             res = analyze(p.get("data") or {})
         except Exception as e:
             res = {"updated": TODAY, "basis": "", "trees": [], "notes": [f"계산 오류: {type(e).__name__}"]}
         w = call(url, body={"a": "result", "key": key, "nick": p["nick"], "updatedAt": p["updatedAt"], "result": res})
+        done[p["nick"]] = str(p["updatedAt"])
         print(p["nick"], len(res["trees"]), "트리", f"{time.time() - t0:.0f}초", w.get("ok"))
 
 

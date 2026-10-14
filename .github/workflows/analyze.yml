@@ -3,10 +3,13 @@ on:
   schedule:
     - cron: "0 0,12 * * *"   # 한국 시간 오전 9시, 밤 9시
   workflow_dispatch:
+concurrency:
+  group: analyze
+  cancel-in-progress: false
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

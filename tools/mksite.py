@@ -56,7 +56,7 @@ async function load(c){
     state = tidy(normalize(r.data || {})); dirty = false; renderAll();
     applyResult(r.result);
     const pending = !r.result || String(r.resultFor) !== String(r.updatedAt);
-    setStatus(c.nick + " 불러옴" + (pending ? " · 마지막 저장 내용은 다음 자동 분석 때 반영돼요" : " · 추천 트리가 최신이에요"), "ok");
+    setStatus(c.nick + " 불러옴" + (pending ? " · 마지막 저장 내용을 분석하는 중이에요(2~3분)" : " · 추천 트리가 최신이에요"), "ok");
   } catch (e) { setStatus("서버에 연결하지 못했어요. 잠시 뒤 다시 시도하세요", "warn"); }
 }
 async function save(create){
@@ -71,10 +71,26 @@ async function save(create){
     } else {
       auth = c; try { localStorage.setItem(LSA, JSON.stringify(c)); } catch (e) {}
       dirty = false; saveDraft();
-      setStatus((r.created ? "등록 완료" : "저장됨") + " · 매일 오전 9시·밤 9시 자동 분석에 반영돼요", "ok");
+      setStatus((r.created ? "등록 완료" : "저장됨") + " · 2~3분 뒤 추천 트리가 갱신돼요", "ok");
+      poll(c, r.updatedAt, 0);
     }
   } catch (e) { setStatus("서버에 연결하지 못했어요. 잠시 뒤 다시 저장하세요", "warn"); }
   saving = false;
+}
+let pollT = null;
+function poll(c, upd, n){
+  clearTimeout(pollT);
+  if (n >= 16) { setStatus("분석이 늦어지고 있어요. 조금 뒤 '불러오기'를 눌러 보세요", "warn"); return; }
+  pollT = setTimeout(async () => {
+    try {
+      const r = await api({a: "load", nick: c.nick, pin: c.pin});
+      if (r.ok && String(r.resultFor) === String(upd)) {
+        applyResult(r.result); rightTab = "recs"; renderRight();
+        setStatus("추천 트리가 갱신됐어요", "ok"); return;
+      }
+    } catch (e) {}
+    poll(c, upd, n + 1);
+  }, 20000);
 }
 $("loadBtn").addEventListener("click", () => { const c = cred(); if (c) load(c); });
 $("newBtn").addEventListener("click", () => { auth = null; save(true); });
@@ -89,7 +105,7 @@ j = h.index('\n', i)
 h = h[:j] + '\nconst EXAMPLE_RECS = RECS;' + h[j:]
 rep('$("recBasis").textContent = "참고용 예시 · 계산 기준 캐릭터: " + RECS.basis + " · " + RECS.updated + " 계산. 강화 단계가 다르면 순위가 달라질 수 있습니다.";',
     '$("recBasis").textContent = myRes ? ("내 추천 · " + RECS.basis + " · " + RECS.updated + " 계산" + ((RECS.notes || []).length ? " · " + RECS.notes.join(" ") : ""))'
-    ' : "아직 내 분석 결과가 없어요. 저장해 두면 매일 오전 9시·밤 9시에 자동으로 계산돼요. 아래는 다른 캐릭터 기준 예시입니다(" + RECS.basis + ").";')
+    ' : "아직 내 분석 결과가 없어요. 저장하면 2~3분 뒤 자동으로 계산돼요. 아래는 다른 캐릭터 기준 예시입니다(" + RECS.basis + ").";')
 
 # 시작: 저장된 닉네임이 있으면 자동 불러오기, 없으면 임시 저장본
 a = h.index('try {\n  const raw = localStorage.getItem(LS);')
