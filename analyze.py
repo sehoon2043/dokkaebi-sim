@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "sim
 import field as F
 import mob as M
 import transcend as TR
+import explain as EX
 
 TODAY = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 9 * 3600))
 STYLE_ORDER = ["절명", "연타", "강타", "척살", "저격", "주술", "파멸", "강인", "기동", "헌신", "기만", "제압"]
@@ -141,14 +142,56 @@ def community(bd, owned, ref):
     nm = bd.get("name") or "이름 없는 덱"
     tab = nm if len(nm) <= 14 else nm[:13] + "…"
     t = {"id": f"comm_{bd.get('id')}", "tab": tab, "sub": nm, "slots": names, "ult": ult, "order": order,
-         "stat": " · ".join(lines), "points": pts, "alt": [], "warn": bool(missing)}
+         "stat": " · ".join(lines), "points": pts[:2] + [EX.flow(order)] + EX.links(order) + pts[2:], "alt": [], "warn": bool(missing)}
     return t
+
+
+# ---------- 배우면 좋은 도술 ----------
+def _all_damage_skills():
+    return [k["n"] for k in F.S.D["skills"] if not k["u"] and k.get("num") and F.S.total(k) > 0 and k["num"]["cd"]
+            and k["n"] not in ("은신", "기습") and k["n"] not in F.HEALS]
+
+
+def suggest(kind, order, ult, owned, tr=0.3):
+    """안 배운 도술 하나를 넣었을 때 3% 넘게 좋아지는 것(최대 2개)"""
+    slots = [x for x in order if x != ult]
+    ust = F.style(ult) if ult in F.S.BY else None
+    heals = [x for x in slots if x in F.HEALS]
+    if kind == "mob":
+        val = lambda n: M.K[n]["dmg"] * min(5, M.TGT.get(n, 1)) / M.K[n]["cd"] if n in M.K else 0
+        pool = [n for n in M.K if n not in owned and n in M.AOE and n not in M.HEALS and M.K[n]["dmg"] > 0 and not F.S.BY[n]["u"]]
+        q = lambda o: M.sim(o, 5, 300, "flat", 8)[0]
+    else:
+        val = lambda n: F.S.total(F.S.BY[n]) / F.S.BY[n]["num"]["cd"]
+        pool = [n for n in _all_damage_skills() if n not in owned]
+        if kind == "boss":
+            q = lambda o: F._boss_quick([x for x in o if x != ult])
+        else:
+            q = lambda o: F.kills([x for x in o if x != ult], o, tr, Ps=F.HUNT_P[:1], syn=(False,))
+    pool = sorted(pool, key=lambda n: -val(n))[:12]
+    base = q(order)
+    if not base:
+        return []
+    best = {}
+    for i, x in enumerate(order):
+        if x == ult or x in heals:
+            continue
+        for n in pool:
+            o2 = order[:]
+            o2[i] = n
+            if ust and sum(F.style(y) == ust for y in o2 if y != ult and y not in F.HEALS) < 3:
+                continue
+            g = q(o2) / base - 1
+            if g > best.get(n, (0, ""))[0]:
+                best[n] = (g, x)
+    top = sorted(((g, n, x) for n, (g, x) in best.items() if g > 0.03), reverse=True)[:2]
+    return [f"배우면 좋은 도술: {EX.josa(n, '을/를')} 배워 {x} 자리에 넣으면 약 +{g * 100:.0f}% (간이 계산)." for g, n, x in top]
 
 
 # ---------- 결과 조립 ----------
 def tree(tid, tab, sub, order, ult, stat, points, alt=None):
     return {"id": tid, "tab": tab, "sub": sub, "slots": arrange(order, ult), "ult": ult, "order": order,
-            "stat": stat, "points": points, "alt": alt or [], "warn": False}
+            "stat": stat, "points": EX.points(order, ult, points), "alt": alt or [], "warn": False}
 
 
 def analyze(data):
@@ -174,7 +217,7 @@ def analyze(data):
         b, o, ult = r
         trees.append(tree(tid, tab, f"힐 {h}개 · 궁극기 {ult}" if h else f"힐 없음 · 궁극기 {ult}", o, ult,
                           "몹 5마리가 뭉쳐 있는 조건", [
-                              f"하단에 {F.style(ult)} 3개를 두어 궁극기 {ult}가 나갑니다.",
+                              f"하단에 {F.style(ult)} 3개를 두어 궁극기 {EX.josa(ult, '이/가')} 나갑니다.",
                               "영혼 소용돌이가 있으면 맨 앞에서 몹을 모으고 방어력을 깎습니다." if "영혼 소용돌이" in o else "영혼 소용돌이를 배우면 몰이가 더 편해집니다.",
                               "칸은 사용 순서대로 놓았습니다."]))
     # 필드 사냥: 몹 체력 기준(REF)은 이 사람의 평범(원거리) 트리 초당 피해
@@ -213,7 +256,7 @@ def analyze(data):
         b0, c, o = rng[0]; u = ult_of(o, c)
         trees.append(tree("single", "평범", f"한 마리씩 잡지만 광역 도술 섞음 · 궁극기 {u}", o, u,
                           stat(f"1분에 약 {b0:.1f}마리 (몹 1~5초 처치, 몹 사이 이동 0.3초)", rel(b0, pu[0][0] if pu else None, "완전 단일")),
-                          ["광역 도술은 몹이 붙어 있으면 덤으로 더 맞습니다. 계산은 몹 한 마리 기준입니다.", f"하단에 {F.style(u)} 3개를 두어 궁극기 {u}가 나갑니다.", SEQ],
+                          ["광역 도술은 몹이 붙어 있으면 덤으로 더 맞습니다. 계산은 몹 한 마리 기준입니다.", f"하단에 {F.style(u)} 3개를 두어 궁극기 {EX.josa(u, '이/가')} 나갑니다.", SEQ],
                           [f"2위({(rng[1][0] / b0 - 1) * 100:+.1f}%): {', '.join(rng[1][1])}"] if len(rng) > 1 else []))
     rh = F.search(owned, "ranged", True, seeds=4)
     if rh:
@@ -255,7 +298,7 @@ def analyze(data):
                     cmp_ = " · 절명 보스와 비슷" if abs(d) < 1 else f" · 절명 보스보다 약 {abs(d):.0f}% " + ("높음" if d > 0 else "낮음")
                 ref["boss"] = max(ref["boss"] or 0, b)
                 trees.append(tree("boss_" + st, st + " 보스", f"{st} 위주 · 궁극기 {u}", o, u, "보스·필드보스·레이드용" + cmp_,
-                                  [f"하단에 {st} 3개를 두어 궁극기 {u}가 나갑니다.", SEQ]))
+                                  [f"하단에 {st} 3개를 두어 궁극기 {EX.josa(u, '이/가')} 나갑니다.", SEQ]))
         if st not in ("절명", "저격", "파멸"):
             hs = F.style_hunt(owned, st, seeds=3)
             if hs:
@@ -263,7 +306,18 @@ def analyze(data):
                 u = F.S.ULT_OF.get(st)
                 trees.append(tree("hunt_" + st, st + " 사냥", f"{st} 위주 필드 사냥 · 궁극기 {u}", o, u,
                                   stat(f"1분에 약 {b:.1f}마리 (몹 사이 이동 {tr_}초)", rel(b, base, "평범 사냥")),
-                                  [f"하단에 {st} 3개를 두어 궁극기 {u}가 나갑니다.", SEQ]))
+                                  [f"하단에 {st} 3개를 두어 궁극기 {EX.josa(u, '이/가')} 나갑니다.", SEQ]))
+    # 주요 트리: 안 배운 도술 중 넣으면 좋은 것
+    for t in trees:
+        kind = {"mob": "mob", "single": "field", "jhunt": "field", "boss": "boss"}.get(t["id"])
+        if not kind:
+            continue
+        try:
+            sg = suggest(kind, t["order"], t["ult"], owned, 0.7 if t["id"] == "jhunt" else 0.3)
+        except Exception:
+            sg = []
+        if sg:
+            t["points"] = t["points"][:-1] + sg + t["points"][-1:] if t["points"] and t["points"][-1].startswith("신식") else t["points"] + sg
     # 커뮤니티 덱(깨비지지 유저 덱, 인기순) — 이 사람 강화·돌파 기준 점수와 내 추천 대비
     for bd in BUILDS:
         try:

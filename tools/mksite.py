@@ -19,6 +19,10 @@ rep('<h1>도사 수첩</h1>',
     '<button type="button" id="loadBtn">불러오기</button></span>')
 rep('.bar .status{','.auth{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.auth input{width:120px}\n.bar .status{')
 
+# 계산에 쓰지 않는 캐릭터 능력치 칸은 숨김(저장된 값은 그대로 둠)
+rep('<button type="button" data-go="sec-stats">능력치</button>', '')
+rep('  <section id="sec-stats">', '  <section id="sec-stats" hidden>')
+
 # 입력 중에는 이 브라우저에 임시 저장, 서버 저장은 저장 버튼으로만
 rep('timer = setTimeout(save, 1500); }', 'timer = setTimeout(saveDraft, 1200); }')
 rep('function changed(){ dirty = true; setStatus("저장 안 됨");',
