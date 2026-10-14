@@ -22,6 +22,10 @@ rep('.bar .status{','.auth{display:flex;flex-wrap:wrap;gap:6px;align-items:cente
 # 계산에 쓰지 않는 캐릭터 능력치 칸은 숨김(저장된 값은 그대로 둠)
 rep('<button type="button" data-go="sec-stats">능력치</button>', '')
 rep('  <section id="sec-stats">', '  <section id="sec-stats" hidden>')
+rep('<button type="button" data-go="sec-logs">실측 기록</button>', '')
+rep('<button type="button" data-go="sec-memo">메모</button>', '')
+rep('  <section id="sec-logs">', '  <section id="sec-logs" hidden>')
+rep('  <section id="sec-memo">', '  <section id="sec-memo" hidden>')
 
 # 입력 중에는 이 브라우저에 임시 저장, 서버 저장은 저장 버튼으로만
 rep('timer = setTimeout(save, 1500); }', 'timer = setTimeout(saveDraft, 1200); }')
