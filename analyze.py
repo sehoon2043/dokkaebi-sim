@@ -160,7 +160,7 @@ def suggest(kind, order, ult, owned, tr=0.3):
     if kind == "mob":
         val = lambda n: M.K[n]["dmg"] * min(5, M.TGT.get(n, 1)) / M.K[n]["cd"] if n in M.K else 0
         pool = [n for n in M.K if n not in owned and n in M.AOE and n not in M.HEALS and M.K[n]["dmg"] > 0 and not F.S.BY[n]["u"]]
-        q = lambda o: M.sim(o, 5, 300, "flat", 8)[0]
+        q = M.quick
     else:
         val = lambda n: F.S.total(F.S.BY[n]) / F.S.BY[n]["num"]["cd"]
         pool = [n for n in _all_damage_skills() if n not in owned]
@@ -216,10 +216,11 @@ def analyze(data):
             continue
         b, o, ult = r
         trees.append(tree(tid, tab, f"힐 {h}개 · 궁극기 {ult}" if h else f"힐 없음 · 궁극기 {ult}", o, ult,
-                          "몹 5마리가 뭉쳐 있는 조건", [
+                          "몹 5마리가 뭉쳐 있는 조건" + (" · 공간 결계로 몹이 더 잘 모임(실측 보정)" if M.gathered(o) else ""), [
                               f"하단에 {F.style(ult)} 3개를 두어 궁극기 {EX.josa(ult, '이/가')} 나갑니다.",
                               "영혼 소용돌이가 있으면 맨 앞에서 몹을 모으고 방어력을 깎습니다." if "영혼 소용돌이" in o else "영혼 소용돌이를 배우면 몰이가 더 편해집니다.",
-                              "칸은 사용 순서대로 놓았습니다."]))
+                              "칸은 사용 순서대로 놓았습니다."] + (
+                              ["공간 결계는 피해보다 몹을 모으는 효과가 커서 넣었습니다(엽전 비경 실측 기준 약 +6.5%)."] if M.gathered(o) else [])))
     # 필드 사냥: 몹 체력 기준(REF)은 이 사람의 평범(원거리) 트리 초당 피해
     F.REF[0] = 290.0
     rng = F.search(owned, "ranged", False, seeds=4)

@@ -116,7 +116,17 @@ def sim(order, n, T=300, cast="flat", Kc=8, dot_rage=True):
 
 CONDS = [(c, k) for c in ("flat", "motion") for k in (8, 14)]
 def sc(o, n): return sum(sim(o, n, 300, c, k)[0] for c, k in CONDS) / len(CONDS)
-def w(o): return 0.2 * sc(o, 3) + 0.8 * sc(o, 5)
+# 몹 모으기: 공간 결계가 있으면 거의 항상 5마리가 뭉치고 다시 모이는 시간도 줄어듦
+# 보정값은 엽전 비경 2단계 실측(10/14, 같은 캐릭터 3회: 결계 없는 몰이 49.2만/시간, 결계+소용돌이+힐 45.7만·50.3만)에 맞춤
+GATHER = "공간 결계"
+GATHER_BONUS = 1.065
+def gathered(o): return GATHER in o
+def w(o):
+    if gathered(o): return GATHER_BONUS * sc(o, 5)
+    return 0.2 * sc(o, 3) + 0.8 * sc(o, 5)
+def quick(o):
+    """간이 점수(5마리, 한 조건)"""
+    return sim(o, 5, 300, "flat", 8)[0] * (GATHER_BONUS if gathered(o) else 1.0)
 def idle(o): return sum(sim(o, 5, 300, c, k)[1] for c, k in CONDS) / len(CONDS)
 
 def valid_order(c):
