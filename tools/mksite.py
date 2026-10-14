@@ -15,10 +15,9 @@ def rep(a, b, n=1):
 
 # 머리 띠: 닉네임·비밀번호
 rep('<h1>도사 수첩</h1>',
-    '<h1>도사 수첩</h1>\n    <span class="auth"><input id="nick" placeholder="닉네임" maxlength="16" autocomplete="username">'
-    '<input id="pin" placeholder="비밀번호 4자리" maxlength="4" inputmode="numeric" type="password" autocomplete="current-password">'
-    '<button type="button" id="loadBtn">불러오기</button><button type="button" id="newBtn">처음 등록</button></span>')
-rep('.bar .status{', '.auth{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.auth input{width:120px}\n.bar .status{')
+    '<h1>도사 수첩</h1>\n    <span class="auth"><input id="nick" placeholder="닉네임" maxlength="16" autocomplete="nickname">'
+    '<button type="button" id="loadBtn">불러오기</button></span>')
+rep('.bar .status{','.auth{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.auth input{width:120px}\n.bar .status{')
 
 # 입력 중에는 이 브라우저에 임시 저장, 서버 저장은 저장 버튼으로만
 rep('timer = setTimeout(save, 1500); }', 'timer = setTimeout(saveDraft, 1200); }')
@@ -35,42 +34,45 @@ async function api(params, body){
   const r = body ? await fetch(API, {method: "POST", body: JSON.stringify(body)}) : await fetch(API + "?" + new URLSearchParams(params));
   return r.json();
 }
-const ERR = {none: "등록된 닉네임이 없어요. 처음이면 '처음 등록'을 누르세요", pin: "비밀번호가 달라요", locked: "비밀번호를 여러 번 틀려 10분간 잠겼어요",
-  input: "닉네임과 숫자 4자리 비밀번호를 입력하세요", size: "내용이 너무 길어요(메모·기록을 줄여 주세요)"};
+// 닉네임만으로 저장·불러오기(길드원 전용). 서버 호환을 위해 비밀번호 칸은 고정값을 보낸다
+const PIN = "0000";
+const ERR = {input: "닉네임을 입력하세요", size: "내용이 너무 길어요(메모·기록을 줄여 주세요)", pin: "이 닉네임은 다른 방식으로 등록돼 있어요. 다른 닉네임을 쓰세요"};
 function cred(){
-  const nick = $("nick").value.trim(), pin = $("pin").value.trim();
-  if (!nick || !/^\d{4}$/.test(pin)) { setStatus(ERR.input, "warn"); return null; }
-  return {nick, pin};
+  const nick = $("nick").value.trim();
+  if (!nick) { setStatus(ERR.input, "warn"); return null; }
+  return {nick, pin: PIN};
 }
-function applyResult(res, upd){
+function applyResult(res){
   myRes = res && res.trees && res.trees.length ? res : null;
   RECS = myRes || EXAMPLE_RECS; recActive = 0; recConfirm = null;
   renderRight();
 }
+function remember(c){ auth = c; try { localStorage.setItem(LSA, JSON.stringify({nick: c.nick})); } catch (e) {} }
 async function load(c){
   setStatus("불러오는 중…");
   try {
     const r = await api({a: "load", nick: c.nick, pin: c.pin});
+    if (!r.ok && r.err === "none") { remember(c); setStatus("새 닉네임이에요. 정보를 입력하고 저장을 누르면 등록돼요", "ok"); return; }
     if (!r.ok) { setStatus(ERR[r.err] || "불러오기 실패", "warn"); return; }
-    auth = c; try { localStorage.setItem(LSA, JSON.stringify(c)); } catch (e) {}
+    remember(c);
     state = tidy(normalize(r.data || {})); dirty = false; renderAll();
     applyResult(r.result);
     const pending = !r.result || String(r.resultFor) !== String(r.updatedAt);
     setStatus(c.nick + " 불러옴" + (pending ? " · 마지막 저장 내용을 분석하는 중이에요(2~3분)" : " · 추천 트리가 최신이에요"), "ok");
   } catch (e) { setStatus("서버에 연결하지 못했어요. 잠시 뒤 다시 시도하세요", "warn"); }
 }
-async function save(create){
+async function save(){
   if (saving) return;
-  const c = auth || (create ? cred() : null);
-  if (!c) { setStatus("닉네임·비밀번호로 '불러오기' 또는 '처음 등록'을 먼저 하세요", "warn"); return; }
+  const typed = $("nick").value.trim();
+  const c = typed ? {nick: typed, pin: PIN} : auth;
+  if (!c) { setStatus("닉네임을 먼저 입력하세요", "warn"); return; }
   saving = true; setStatus("저장 중…");
   try {
-    const r = await api(null, {a: "save", nick: c.nick, pin: c.pin, data: JSON.parse(JSON.stringify(state)), create: !!create});
+    const r = await api(null, {a: "save", nick: c.nick, pin: c.pin, data: JSON.parse(JSON.stringify(state)), create: true});
     if (!r.ok) {
-      setStatus(create && r.err === "pin" ? "이미 있는 닉네임이에요. 다른 닉네임을 쓰거나 '불러오기'를 누르세요" : (ERR[r.err] || "저장 실패"), "warn");
+      setStatus(ERR[r.err] || "저장 실패", "warn");
     } else {
-      auth = c; try { localStorage.setItem(LSA, JSON.stringify(c)); } catch (e) {}
-      dirty = false; saveDraft();
+      remember(c); dirty = false; saveDraft();
       setStatus((r.created ? "등록 완료" : "저장됨") + " · 2~3분 뒤 추천 트리가 갱신돼요", "ok");
       poll(c, r.updatedAt, 0);
     }
@@ -93,10 +95,8 @@ function poll(c, upd, n){
   }, 20000);
 }
 $("loadBtn").addEventListener("click", () => { const c = cred(); if (c) load(c); });
-$("newBtn").addEventListener("click", () => { auth = null; save(true); });
+$("nick").addEventListener("keydown", e => { if (e.key === "Enter") { const c = cred(); if (c) load(c); } });
 ''' + h[b:]
-rep('$("saveBtn").addEventListener("click", () => { clearTimeout(timer); save(); });',
-    '$("saveBtn").addEventListener("click", () => { clearTimeout(timer); save(false); });')
 
 # 추천 트리: 내 분석 결과가 있으면 그걸, 없으면 예시
 rep('const RECS = ', 'let RECS = ')
@@ -113,9 +113,9 @@ b = h.index('\n', h.index('} catch (e) { setStatus("이 브라우저는 저장�
 h = h[:a] + r'''(function(){
   let c = null;
   try { c = JSON.parse(localStorage.getItem(LSA) || "null"); } catch (e) {}
-  if (c && c.nick) { $("nick").value = c.nick; $("pin").value = c.pin || ""; load(c); return; }
+  if (c && c.nick) { $("nick").value = c.nick; load({nick: c.nick, pin: PIN}); return; }
   try { const raw = localStorage.getItem(LS); if (raw) { state = tidy(normalize(JSON.parse(raw))); renderAll(); } } catch (e) {}
-  setStatus("처음이면 닉네임과 비밀번호 4자리를 정하고 '처음 등록'을 누르세요");
+  setStatus("닉네임을 입력하고 불러오기를 누르세요. 처음이면 정보를 입력한 뒤 저장하면 등록돼요");
 })();''' + h[b:]
 h = h.replace("__API__", api)
 assert "localStorage.setItem(LS, JSON.stringify(state)); dirty = false; setStatus(\"저장됨 · 이 브라우저에만\"" not in h
