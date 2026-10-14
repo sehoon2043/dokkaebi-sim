@@ -155,24 +155,24 @@ $("pnDlg").addEventListener("click", e => { if (e.target === $("pnDlg")) $("pnDl
 // 커뮤니티 소식: 클라우드 예약 작업이 4시간마다 community.json 을 갱신
 const LSC = "dosa-notebook-site-cm";
 let CM = null;
-function el(tag, cls, txt){ const x = document.createElement(tag); if (cls) x.className = cls; if (txt != null) x.textContent = txt; return x; }
+function cel(tag, cls, txt){ const x = document.createElement(tag); if (cls) x.className = cls; if (txt != null) x.textContent = txt; return x; }
 function cmRender(){
   const box = $("cmBody"); box.textContent = "";
   const es = (CM && CM.entries) || [];
   if (!es.length) { box.textContent = "아직 정리된 소식이 없어요."; return; }
   for (const e of es) {
-    const d = el("div", "pn-ver");
-    const h3 = el("h3", null, e.at || ""); h3.appendChild(el("small", null, (e.range ? e.range + " · " : "") + "디시 새 글 " + ((e.counts || {}).dc || 0) + "개" + (((e.counts || {}).forum) ? " · 공지 " + e.counts.forum + "개" : "")));
+    const d = cel("div", "pn-ver");
+    const h3 = cel("h3", null, e.at || ""); h3.appendChild(cel("small", null, (e.range ? e.range + " · " : "") + "디시 새 글 " + ((e.counts || {}).dc || 0) + "개" + (((e.counts || {}).forum) ? " · 공지 " + e.counts.forum + "개" : "")));
     d.appendChild(h3);
-    if (e.headline) d.appendChild(el("p", "cm-hl", e.headline));
+    if (e.headline) d.appendChild(cel("p", "cm-hl", e.headline));
     for (const s of e.sections || []) {
-      const sec = el("div", "cm-sec"); sec.appendChild(el("h4", null, s.h));
-      const ul = el("ul"); for (const it of s.items || []) ul.appendChild(el("li", null, it));
+      const sec = cel("div", "cm-sec"); sec.appendChild(cel("h4", null, s.h));
+      const ul = cel("ul"); for (const it of s.items || []) ul.appendChild(cel("li", null, it));
       sec.appendChild(ul); d.appendChild(sec);
     }
     box.appendChild(d);
   }
-  box.appendChild(el("p", "cm-note", "디시 도깨비의세계 갤러리와 공식 포럼 글을 자동으로 요약한 내용이에요. 커뮤니티 의견이라 사실과 다를 수 있어요."));
+  box.appendChild(cel("p", "cm-note", "디시 도깨비의세계 갤러리와 공식 포럼 글을 자동으로 요약한 내용이에요. 커뮤니티 의견이라 사실과 다를 수 있어요."));
 }
 fetch("community.json?t=" + Date.now()).then(r => r.json()).then(j => {
   CM = j;
