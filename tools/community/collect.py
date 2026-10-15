@@ -10,7 +10,7 @@ UA_M = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) C
 UA_PC = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
 DC = "https://m.dcinside.com/board/tokkebiworld"
 FB = "https://forum-api.kakaogames.com/v1/dokkaebi/boards"
-MAX_PAGES = 40      # 디시 목록 최대 페이지
+MAX_PAGES = 100     # 디시 목록 최대 페이지(약 3,000개, 실행이 몇 번 빠져도 놓치지 않게)
 MAX_BODIES = 110    # 본문까지 읽을 글 수
 KW = re.compile(r"공지|패치|점검|보상|쿠폰|버그|너프|하향|상향|메타|빌드|트리|세팅|덱|절명|파멸|저격|연타|기동|주술|강타|헌신|기만|척살|제압|강인|"
                 r"사냥터|황무지|호랑|비경|엽전|레이드|보스|낙화|승천|돌파|강화|각성|영웅|전설|도안|추옵|추가 ?효과|변경권|거래소|정확도|명중|"
