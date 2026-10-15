@@ -227,23 +227,32 @@ $("cmClose").addEventListener("click", () => $("cmDlg").close());
 $("cmDlg").addEventListener("click", e => { if (e.target === $("cmDlg")) $("cmDlg").close(); });
 // 길드원 현황: 저장된 길드원의 도술 강화 레벨 모아 보기(서버 members는 닉네임·강화·도술 수·각성만 줌)
 const GM_ST = ["절명", "연타", "강타", "척살", "저격", "주술", "파멸", "강인", "기동", "헌신", "기만", "제압"];
-async function gmRender(){
-  const box = $("gmBody"); box.textContent = "불러오는 중…";
-  let r = null;
-  try { r = await api({a: "members"}); } catch (e) {}
-  box.textContent = "";
-  if (!r || !r.ok || !r.list) { box.textContent = "길드원 정보를 불러오지 못했어요. 잠시 뒤 다시 열어 보세요."; return; }
+// 서버 응답이 느려서 페이지를 열 때 미리 받아 두고, 마지막으로 받은 목록은 이 브라우저에 보관해 창을 바로 띄운다
+const LSG = "dosa-notebook-site-gm";
+let GM = null, gmBusy = null;
+try { GM = JSON.parse(localStorage.getItem(LSG) || "null"); } catch (e) {}
+function gmFetch(){
+  if (gmBusy) return gmBusy;
+  gmBusy = api({a: "members"}).then(r => {
+    if (r && r.ok && r.list) { GM = {list: r.list, at: Date.now()}; try { localStorage.setItem(LSG, JSON.stringify(GM)); } catch (e) {} }
+  }).catch(() => {}).finally(() => { gmBusy = null; if ($("gmDlg").open) gmRender(); });
+  return gmBusy;
+}
+function gmRender(){
+  const box = $("gmBody"); box.textContent = "";
+  if (!GM) { box.textContent = gmBusy ? "불러오는 중… (서버가 느리면 10초 넘게 걸려요)" : "길드원 정보를 불러오지 못했어요. 잠시 뒤 다시 열어 보세요."; return; }
+  const r = GM;
   const lv = (m, s) => Number((m.levels || {})[s]) || 0;
   const sum = m => GM_ST.reduce((a, s) => a + lv(m, s), 0);
   const L = r.list.filter(m => sum(m) > 0).sort((a, b) => sum(b) - sum(a));
   if (!L.length) { box.textContent = "아직 강화 레벨을 저장한 길드원이 없어요."; return; }
   const cols = GM_ST.filter(s => L.some(m => lv(m, s) > 0));
   const mx = {}; for (const s of cols) mx[s] = Math.max(...L.map(m => lv(m, s)));
-  box.appendChild(cel("p", "cm-meta", "길드원 " + L.length + "명 · 강화 레벨 합계 순 · 열마다 가장 높은 레벨은 색으로 표시 · 각성 칸에 마우스를 올리면 도술 목록"));
+  box.appendChild(cel("p", "cm-meta", "길드원 " + L.length + "명 · 강화 레벨 합계 순 · 열마다 가장 높은 레벨은 색으로 표시 · 각성 칸에 마우스를 올리면 도술 목록" + (gmBusy ? " · 최신 정보 확인 중…" : "")));
   const wrap = cel("div", "gm-wrap"), tb = cel("table", "gm-tbl");
   const hr = cel("tr"); hr.appendChild(cel("th", "nk", "닉네임")); hr.appendChild(cel("th", null, "주력"));
   for (const s of cols) hr.appendChild(cel("th", null, s));
-  for (const x of ["합계", "도술", "각성", "저장"]) hr.appendChild(cel("th", null, x));
+  for (const x of ["합계", "각성", "저장"]) hr.appendChild(cel("th", null, x));
   const th = cel("thead"); th.appendChild(hr); tb.appendChild(th);
   const bd = cel("tbody");
   for (const m of L) {
@@ -253,7 +262,6 @@ async function gmRender(){
     tr.appendChild(cel("td", "main", top.join("·")));
     for (const s of cols) { const v = lv(m, s); tr.appendChild(cel("td", v === 0 ? "z" : v === mx[s] ? "top" : null, v ? String(v) : "·")); }
     tr.appendChild(cel("td", null, String(sum(m))));
-    tr.appendChild(cel("td", null, String(m.owned || 0)));
     const aw = Object.entries(m.awaken || {});
     const ac = cel("td", aw.length ? null : "z", aw.length ? String(aw.length) : "·");
     if (aw.length) ac.title = aw.map(([n, k]) => n + " " + k + "단계").join("\n");
@@ -266,12 +274,13 @@ async function gmRender(){
   const fr = cel("tr"); fr.appendChild(cel("td", "nk", "평균")); fr.appendChild(cel("td"));
   for (const s of cols) fr.appendChild(cel("td", null, (L.reduce((a, m) => a + lv(m, s), 0) / L.length).toFixed(1)));
   fr.appendChild(cel("td", null, (L.reduce((a, m) => a + sum(m), 0) / L.length).toFixed(0)));
-  for (let i = 0; i < 3; i++) fr.appendChild(cel("td"));
+  for (let i = 0; i < 2; i++) fr.appendChild(cel("td"));
   const tf = cel("tfoot"); tf.appendChild(fr); tb.appendChild(tf);
   wrap.appendChild(tb); box.appendChild(wrap);
   box.appendChild(cel("p", "cm-note", "수첩에 저장한 강화 레벨 기준이에요. 강화를 올렸으면 수첩에서 고치고 저장해 주세요."));
 }
-$("gmBtn").addEventListener("click", () => { $("gmDlg").showModal(); gmRender(); });
+$("gmBtn").addEventListener("click", () => { gmFetch(); $("gmDlg").showModal(); gmRender(); });
+setTimeout(gmFetch, 1500);
 $("gmClose").addEventListener("click", () => $("gmDlg").close());
 $("gmDlg").addEventListener("click", e => { if (e.target === $("gmDlg")) $("gmDlg").close(); });
 ''' + h[b:]
