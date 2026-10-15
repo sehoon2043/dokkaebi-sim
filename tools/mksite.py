@@ -42,6 +42,7 @@ rep('.bar .status{',
     '.gm-tbl th,.gm-tbl td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:center}.gm-tbl th{font-size:.76rem;color:var(--muted);font-weight:600}\n'
     '.gm-tbl td.nk,.gm-tbl th.nk{text-align:left;position:sticky;left:0;background:var(--panel)}.gm-tbl td.nk{font-weight:600}\n'
     '.gm-tbl td.z{color:var(--muted)}.gm-tbl td.top{font-weight:700;color:var(--accent)}.gm-tbl td.main{font-size:.78rem;color:var(--muted)}\n'
+    '.gm-tbl td.st{font-size:.8rem;font-weight:600}.gm-tbl td.st.ok{color:var(--ok)}.gm-tbl td.st.run{color:var(--accent)}.gm-tbl td.st.bad{color:var(--warn)}\n'
     '.gm-tbl tr.me td{background:var(--accent-soft)}.gm-tbl tfoot td{color:var(--muted);font-size:.8rem;border-bottom:0}\n'
     '.ana{margin:0 0 12px;padding:10px 14px;border:1px solid var(--accent);border-radius:10px;background:var(--accent-soft)}.ana.warn{border-color:var(--warn)}\n'
     '.ana-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.ana-top b{font-size:.95rem}.ana-top span{font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}\n'
@@ -291,6 +292,17 @@ function gmFetch(){
   }).catch(() => {}).finally(() => { gmBusy = null; if ($("gmDlg").open) gmRender(); });
   return gmBusy;
 }
+// 추천 트리 분석 상태: 완료(시각) / 계산 중 % / 준비 중 / 오류
+function gmState(m){
+  const g = m.progress, upd = String(m.updatedAt || "");
+  if (String(m.resultFor || "") === upd && upd) {
+    if (!m.resultOk) return cel("td", "st bad", "오류");
+    const t = new Date(Number(m.resultAt));
+    return cel("td", "st ok", "완료" + (isNaN(t) ? "" : " " + String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0")));
+  }
+  if (g && String(g.for) === upd && g.pct > 0) return cel("td", "st run", "계산 중 " + Math.round(g.pct) + "%");
+  return cel("td", "st run", "준비 중");
+}
 function gmRender(){
   const box = $("gmBody"); box.textContent = "";
   if (!GM) { box.textContent = gmBusy ? "불러오는 중…" : "길드원 정보를 불러오지 못했어요. 잠시 뒤 다시 열어 보세요."; return; }
@@ -305,7 +317,7 @@ function gmRender(){
   const wrap = cel("div", "gm-wrap"), tb = cel("table", "gm-tbl");
   const hr = cel("tr"); hr.appendChild(cel("th", "nk", "닉네임")); hr.appendChild(cel("th", null, "주력"));
   for (const s of cols) hr.appendChild(cel("th", null, s));
-  for (const x of ["합계", "각성", "저장"]) hr.appendChild(cel("th", null, x));
+  for (const x of ["합계", "각성", "저장", "추천 트리"]) hr.appendChild(cel("th", null, x));
   const th = cel("thead"); th.appendChild(hr); tb.appendChild(th);
   const bd = cel("tbody");
   for (const m of L) {
@@ -321,18 +333,21 @@ function gmRender(){
     tr.appendChild(ac);
     const dt = new Date(Number(m.updatedAt));
     tr.appendChild(cel("td", "z", isNaN(dt) ? "" : (dt.getMonth() + 1) + "/" + dt.getDate()));
+    tr.appendChild(gmState(m));
     bd.appendChild(tr);
   }
   tb.appendChild(bd);
   const fr = cel("tr"); fr.appendChild(cel("td", "nk", "평균")); fr.appendChild(cel("td"));
   for (const s of cols) fr.appendChild(cel("td", null, (L.reduce((a, m) => a + lv(m, s), 0) / L.length).toFixed(1)));
   fr.appendChild(cel("td", null, (L.reduce((a, m) => a + sum(m), 0) / L.length).toFixed(0)));
-  for (let i = 0; i < 2; i++) fr.appendChild(cel("td"));
+  for (let i = 0; i < 3; i++) fr.appendChild(cel("td"));
   const tf = cel("tfoot"); tf.appendChild(fr); tb.appendChild(tf);
   wrap.appendChild(tb); box.appendChild(wrap);
   box.appendChild(cel("p", "cm-note", "수첩에 저장한 강화 레벨 기준이에요. 강화를 올렸으면 수첩에서 고치고 저장해 주세요."));
 }
 $("gmBtn").addEventListener("click", () => { gmFetch(); $("gmDlg").showModal(); gmRender(); });
+// 창이 열려 있는 동안 계산 중인 사람이 있으면 5초마다 새로 받음
+setInterval(() => { if ($("gmDlg").open && GM && GM.list.some(m => String(m.resultFor || "") !== String(m.updatedAt || ""))) gmFetch(); }, 5000);
 setTimeout(gmFetch, 1500);
 $("gmClose").addEventListener("click", () => $("gmDlg").close());
 $("gmDlg").addEventListener("click", e => { if (e.target === $("gmDlg")) $("gmDlg").close(); });

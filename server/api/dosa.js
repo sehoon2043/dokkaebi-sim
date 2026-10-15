@@ -61,7 +61,10 @@ function summary(p) {
       awaken[k] = s;
     }
   }
-  return { nick: p.nick, levels: d.levels || {}, owned: Object.keys(owned).length, awaken, updatedAt: p.updatedAt };
+  const res = p.result || {};
+  const err = (res.notes || []).some((n) => String(n).includes("오류")) || !(res.trees || []).length;
+  return { nick: p.nick, levels: d.levels || {}, owned: Object.keys(owned).length, awaken, updatedAt: p.updatedAt,
+    resultFor: p.resultFor || "", resultAt: p.resultAt || "", resultOk: Boolean(p.result) && !err };
 }
 
 function pub(p) {
@@ -129,7 +132,12 @@ async function handleGet(p) {
   }
   if (p.a === "members") {
     const list = (await getMany("m:")).filter((x) => !MEMBERS_HIDE.includes(x.nick));
-    return out({ ok: true, list });
+    // 분석 진행률(g:)도 함께: 계산 중·대기·완료를 길드원 현황에 표시
+    if (list.length) {
+      const gs = await db().mget(...list.map((x) => "g:" + x.nick));
+      list.forEach((x, i) => { x.progress = gs[i] || null; });
+    }
+    return out({ ok: true, list, now: Date.now() });
   }
   if (p.a === "data") {
     if (!isAdmin(p.key)) {
@@ -195,6 +203,7 @@ async function handlePost(b) {
     prof.resultFor = String(b.updatedAt || "");
     prof.resultAt = String(Date.now());
     await db().set("p:" + nick, prof);
+    await db().set("m:" + nick, summary(prof));
     return out({ ok: true });
   }
   if (b.a === "progress") {
@@ -218,6 +227,18 @@ async function handlePost(b) {
     }
     await db().set("d:" + String(b.name || ""), b.value);
     return out({ ok: true });
+  }
+  if (b.a === "resync") {   // 길드원 현황 요약(m:)을 프로필(p:)로 다시 만듦(관리자)
+    if (!isAdmin(b.key)) {
+      return out({ ok: false, err: "key" });
+    }
+    const all = await getMany("p:");
+    const pl = db().pipeline();
+    all.forEach((x) => pl.set("m:" + x.nick, summary(x)));
+    if (all.length) {
+      await pl.exec();
+    }
+    return out({ ok: true, n: all.length });
   }
   if (b.a === "import") {
     if (!isAdmin(b.key)) {
