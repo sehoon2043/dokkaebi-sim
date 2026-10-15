@@ -309,11 +309,11 @@ function gmRender(){
   const r = GM;
   const lv = (m, s) => Number((m.levels || {})[s]) || 0;
   const sum = m => GM_ST.reduce((a, s) => a + lv(m, s), 0);
-  const L = r.list.filter(m => sum(m) > 0).sort((a, b) => sum(b) - sum(a));
+  const L = r.list.filter(m => sum(m) > 0).sort((a, b) => String(a.nick).localeCompare(String(b.nick), "ko"));
   if (!L.length) { box.textContent = "아직 강화 레벨을 저장한 길드원이 없어요."; return; }
   const cols = GM_ST.filter(s => L.some(m => lv(m, s) > 0));
   const mx = {}; for (const s of cols) mx[s] = Math.max(...L.map(m => lv(m, s)));
-  box.appendChild(cel("p", "cm-meta", "길드원 " + L.length + "명 · 강화 레벨 합계 순 · 열마다 가장 높은 레벨은 색으로 표시 · 각성 칸에 마우스를 올리면 도술 목록" + (gmBusy ? " · 최신 정보 확인 중…" : "")));
+  box.appendChild(cel("p", "cm-meta", "길드원 " + L.length + "명 · 가나다 순 · 열마다 가장 높은 레벨은 색으로 표시 · 각성 칸에 마우스를 올리면 도술 목록" + (gmBusy ? " · 최신 정보 확인 중…" : "")));
   const wrap = cel("div", "gm-wrap"), tb = cel("table", "gm-tbl");
   const hr = cel("tr"); hr.appendChild(cel("th", "nk", "닉네임")); hr.appendChild(cel("th", null, "주력"));
   for (const s of cols) hr.appendChild(cel("th", null, s));
