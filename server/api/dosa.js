@@ -63,7 +63,7 @@ function summary(p) {
   }
   const res = p.result || {};
   const err = (res.notes || []).some((n) => String(n).includes("오류")) || !(res.trees || []).length;
-  return { nick: p.nick, levels: d.levels || {}, owned: Object.keys(owned).length, awaken, updatedAt: p.updatedAt,
+  return { nick: p.nick, levels: d.levels || {}, awaken, updatedAt: p.updatedAt,
     resultFor: p.resultFor || "", resultAt: p.resultAt || "", resultOk: Boolean(p.result) && !err };
 }
 

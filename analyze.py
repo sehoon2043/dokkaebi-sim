@@ -518,7 +518,9 @@ def analyze(data):
     progress(55, "추천 트리 검증")
     verify_all(trees, owned, (levels, steps, F.REF[0], F.NSLOT[0]), 55, 97)
     progress(97, "커뮤니티 덱 비교")
-    # 커뮤니티 덱(깨비지지 유저 덱, 인기순) — 이 사람 강화·각성 기준 점수와 내 추천 대비
+    # 커뮤니티 덱(외부 덱 게시판 인기순) — 이 사람 강화·각성 기준 점수와 내 추천 대비
+    if not BUILDS:
+        notes.append("커뮤니티 덱을 불러오지 못해 이번 계산에서는 빠졌어요.")
     for bd in BUILDS:
         try:
             trees.append(community(bd, owned, ref))

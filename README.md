@@ -8,6 +8,7 @@
 - `sim/verify.py` — 추천 트리 검증(한 칸 바꾼 조합 비교·가정 흔들기)과 탐색 보강, `sim/explain.py` — 포인트 문구
 - `sim/gamedata.py` — 게임 데이터 읽기. 도술 수치표·각성 표는 저장소에 넣지 않고 저장 서버에서 받는다(`DOSA_URL`·`DOSA_KEY` 필요). `data/targets.json`은 도술 대상 수
 - `tools/check.py` — 계산 자동 점검(`--quick`은 분석 전에, 전체는 계산 코드 push 때 `check.yml`)
-- `tools/mksite.py` — 사이트(index.html) 생성, `tools/community/` — 커뮤니티 소식 정리
+- `site/base.html` — 사이트 원본(개인 정보 없는 공개용 수첩), `tools/mksite.py` — 사이트 생성: `python tools/mksite.py site/base.html ../dokkaebi-dosa/index.html <저장 서버 URL>`. `tools/example_recs.json` — 결과가 없을 때 보여 줄 예시 추천 트리
+- `tools/community/` — 커뮤니티 소식 정리
 - `server/` — 저장 서버(Vercel + Upstash Redis). 저장하면 GitHub Actions 분석을 요청한다
 - GitHub Actions: 저장 직후 실행, 예비로 매일 한국 시간 오전 9시·밤 9시. 시크릿 `DOSA_URL`(저장 서버 주소), `DOSA_KEY`(관리 키)

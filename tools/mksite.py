@@ -93,10 +93,10 @@ rep('function changed(){ dirty = true; setStatus("저장 안 됨");',
 
 a = h.index('const LS = "dosa-notebook-public-v1";')
 b = h.index('function barH(){')
-h = h[:a] + r'''const LS = "dosa-notebook-site-v1", LSA = "dosa-notebook-site-auth", LSR = "dosa-notebook-site-res";
+h = h[:a] + r'''const LS = "dosa-notebook-site-v1", LSA = "dosa-notebook-site-auth", LSR = "dosa-notebook-site-res", LSD = "dosa-notebook-site-dirty";
 const API = "__API__";
 let auth = null, myRes = null;
-function saveDraft(){ try { localStorage.setItem(LS, JSON.stringify(state)); } catch (e) {} }
+function saveDraft(){ try { localStorage.setItem(LS, JSON.stringify(state)); localStorage.setItem(LSD, dirty ? "1" : ""); } catch (e) {} }
 async function api(params, body){
   const r = body ? await fetch(API, {method: "POST", body: JSON.stringify(body)}) : await fetch(API + "?" + new URLSearchParams(params));
   return r.json();
@@ -115,27 +115,41 @@ function applyResult(res){
   renderRight();
 }
 function remember(c){ auth = c; try { localStorage.setItem(LSA, JSON.stringify({nick: c.nick})); } catch (e) {} }
-async function load(c){
+// keep: 저장 안 된 수정이 있으면 화면(내 수정)은 그대로 두고 추천 트리만 받아 옴
+async function load(c, keep){
   setStatus("서버에서 최신 정보를 불러오는 중… (화면은 마지막으로 받은 내용)");
   try {
     const r = await api({a: "load", nick: c.nick, pin: c.pin});
     if (!r.ok && r.err === "none") { remember(c); setStatus("새 닉네임이에요. 정보를 입력하고 저장을 누르면 등록돼요", "ok"); return; }
     if (!r.ok) { setStatus(ERR[r.err] || "불러오기 실패", "warn"); return; }
     remember(c);
-    state = tidy(normalize(r.data || {})); dirty = false; renderAll();
+    if (!keep) { state = tidy(normalize(r.data || {})); dirty = false; renderAll(); } else dirty = true;
     applyResult(r.result);
     // 서버 응답이 느릴 때가 있어 마지막으로 받은 내용을 이 브라우저에 보관(다음에 열면 먼저 보여 줌)
     saveDraft(); try { localStorage.setItem(LSR, JSON.stringify({nick: c.nick, res: r.result || null})); } catch (e) {}
     const pending = !r.result || String(r.resultFor) !== String(r.updatedAt);
-    setStatus(c.nick + " 불러옴" + (pending ? " · 추천 트리 계산 중" : " · 추천 트리가 최신이에요"), "ok");
+    if (keep) setStatus("저장 안 된 수정이 남아 있어요 · 저장을 누르면 반영되고, 버리려면 불러오기를 누르세요", "warn");
+    else setStatus(c.nick + " 불러옴" + (pending ? " · 추천 트리 계산 중" : " · 추천 트리가 최신이에요"), "ok");
     if (pending) watch(c, r.updatedAt, Number(r.updatedAt) || Date.now()); else anaHide();
   } catch (e) { setStatus("서버에 연결하지 못했어요. 잠시 뒤 다시 시도하세요", "warn"); }
+}
+let confirmNick = null, confirmT = null;
+function askAgain(nick, msg){
+  confirmNick = nick; clearTimeout(confirmT); confirmT = setTimeout(() => { confirmNick = null; }, 15000);
+  setStatus(msg, "warn");
 }
 async function save(){
   if (saving) return;
   const typed = $("nick").value.trim();
   const c = typed ? {nick: typed, pin: PIN} : auth;
   if (!c) { setStatus("닉네임을 먼저 입력하세요", "warn"); return; }
+  if ((!auth || auth.nick !== c.nick) && confirmNick !== c.nick) {
+    let exists = false;
+    try { exists = !!(await api({a: "status", nick: c.nick})).ok; } catch (e) {}
+    if (exists) { askAgain(c.nick, "'" + c.nick + "'은(는) 이미 등록된 닉네임이에요. 지금 화면 내용으로 덮어쓰려면 저장을 한 번 더 누르세요(내 정보를 보려면 불러오기)"); return; }
+    if (auth) { askAgain(c.nick, "새 닉네임 '" + c.nick + "'으로 지금 화면 내용을 복사해 새로 등록해요. 맞으면 저장을 한 번 더 누르세요"); return; }
+  }
+  confirmNick = null;
   saving = true; setStatus("저장 중…");
   try {
     const r = await api(null, {a: "save", nick: c.nick, pin: c.pin, data: JSON.parse(JSON.stringify(state)), create: true});
@@ -196,7 +210,12 @@ function watch(c, upd, t0){
   };
   watchT = setTimeout(tick, 2000);
 }
-$("loadBtn").addEventListener("click", () => { const c = cred(); if (c) load(c); });
+let confirmLoad = 0;
+$("loadBtn").addEventListener("click", () => {
+  const c = cred(); if (!c) return;
+  if (dirty && Date.now() - confirmLoad > 15000) { confirmLoad = Date.now(); setStatus("저장 안 된 수정이 있어요. 불러오면 사라져요. 그래도 불러오려면 한 번 더 누르세요", "warn"); return; }
+  confirmLoad = 0; load(c);
+});
 $("nick").addEventListener("keydown", e => { if (e.key === "Enter") { const c = cred(); if (c) load(c); } });
 // 패치노트: 새 버전이 있으면 버튼에 점 표시, 열면 읽음 처리
 const LSP = "dosa-notebook-site-pn";
@@ -204,14 +223,16 @@ let PN = null;
 function pnRender(){
   const box = $("pnBody"); box.textContent = "";
   if (!PN || !PN.length) { box.textContent = "패치노트를 불러오지 못했어요."; return; }
-  for (const v of PN) {
+  let old = null;
+  PN.forEach((v, i) => {
+    if (i === 5) { old = document.createElement("details"); old.className = "cm-hist"; const sm2 = document.createElement("summary"); sm2.textContent = "이전 패치노트 " + (PN.length - 5) + "개 보기"; old.appendChild(sm2); box.appendChild(old); }
     const d = document.createElement("div"); d.className = "pn-ver";
     const h3 = document.createElement("h3"); h3.textContent = "v" + v.v;
     const sm = document.createElement("small"); sm.textContent = v.date || ""; h3.appendChild(sm);
     const ul = document.createElement("ul");
     for (const it of v.items || []) { const li = document.createElement("li"); li.textContent = it; ul.appendChild(li); }
-    d.append(h3, ul); box.appendChild(d);
-  }
+    d.append(h3, ul); (old || box).appendChild(d);
+  });
 }
 fetch("patchnotes.json?t=" + Date.now()).then(r => r.json()).then(j => {
   PN = j;
@@ -388,7 +409,8 @@ h = h[:a] + r'''(function(){
       const raw = localStorage.getItem(LS); if (raw) { state = tidy(normalize(JSON.parse(raw))); renderAll(); }
       const cr = JSON.parse(localStorage.getItem(LSR) || "null"); if (cr && cr.nick === c.nick && cr.res) applyResult(cr.res);
     } catch (e) {}
-    load({nick: c.nick, pin: PIN}); return;
+    let wasDirty = false; try { wasDirty = localStorage.getItem(LSD) === "1"; } catch (e) {}
+    load({nick: c.nick, pin: PIN}, wasDirty); return;
   }
   try { const raw = localStorage.getItem(LS); if (raw) { state = tidy(normalize(JSON.parse(raw))); renderAll(); } } catch (e) {}
   setStatus("닉네임을 입력하고 불러오기를 누르세요. 처음이면 정보를 입력한 뒤 저장하면 등록돼요");
@@ -417,6 +439,8 @@ for (const b of document.querySelectorAll(".mtabs button")) b.addEventListener("
 $("gmBtn").addEventListener(""")
 rep('      rightTab = "recs"; renderRight(); setStatus("추천 트리가 갱신됐어요", "ok");',
     '      rightTab = "recs"; renderRight(); setMt("recs"); setStatus("추천 트리가 갱신됐어요", "ok");')
+rep('.mtabs{display:none}', '.mtabs{display:none}\n.pnav{display:none!important}\n'
+    '@media (max-width:1279.98px){.bar{position:static}.mtabs{position:sticky;top:0;z-index:5;background:var(--bg);padding:6px 0;margin:0}}')
 h = h.replace("__API__", api)
 assert "localStorage.setItem(LS, JSON.stringify(state)); dirty = false; setStatus(\"저장됨 · 이 브라우저에만\"" not in h
 page = ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n'
