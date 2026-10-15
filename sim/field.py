@@ -31,6 +31,7 @@ BASIC_I = 0.7
 HS = (1.5, 3.0, 5.0)
 T = 300
 REF = [290.0]
+NSLOT = [8]   # 게임에서 열린 도술 칸 수(5~8). analyze가 프로필의 slotCount로 정함
 
 
 def set_levels(levels):
@@ -202,7 +203,7 @@ def search(owned, kind, heal, seeds=5, travel=None):
         cand = [n for n in P if style(n) in ("저격", "파멸") and TGT.get(n, 1) == 1]
     else:
         cand = [n for n in P if style(n) in ("저격", "파멸")]
-    need = 7 if heal_n else 8
+    need = NSLOT[0] - 1 if heal_n else NSLOT[0]
     if len(cand) < need:
         return []
     found = {}
@@ -294,18 +295,18 @@ def boss_search(owned, seeds=6, st="절명"):
     """스타일 st 궁극기 보스 트리. 하단 5칸에 st 3개 이상"""
     cand = [n for n in pool(owned) if n not in ("기습",) and n not in HEALS]
     J = [n for n in cand if style(n) == st]
-    if len(J) < 3 or len(cand) < 8:
+    if len(J) < 3 or len(cand) < NSLOT[0]:
         return []
     found = {}
     for s in range(seeds):
         r = random.Random(s)
         b3 = r.sample(J, 3)
-        c = b3 + r.sample([n for n in cand if n not in b3], 5)
+        c = b3 + r.sample([n for n in cand if n not in b3], NSLOT[0] - 3)
         best = _boss_quick(c)
         imp = True
         while imp:
             imp = False
-            for i in r.sample(range(8), 8):
+            for i in r.sample(range(len(c)), len(c)):
                 for n in cand:
                     if n in c:
                         continue
@@ -331,7 +332,7 @@ def style_hunt(owned, st, seeds=4, heal=False):
     P = [n for n in pool(owned) if n != "기습" and n not in HEALS]
     J = [n for n in P if style(n) == st]
     ult = S.ULT_OF.get(st)
-    need = 7 if heal else 8
+    need = NSLOT[0] - 1 if heal else NSLOT[0]
     if len(J) < 3 or len(P) < need or not ult:
         return []
     heal_n = "생명의 축복" if heal and "생명의 축복" in owned else None

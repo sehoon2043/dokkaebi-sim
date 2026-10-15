@@ -57,9 +57,9 @@ def mob_search(owned, heals):
     else:
         return None
     fixed = core + (["영혼 소용돌이"] if "영혼 소용돌이" in owned else []) + hl
-    free = 8 - len(fixed)
+    free = F.NSLOT[0] - len(fixed)
     cand = [n for n in aoe if n not in fixed]
-    if len(cand) < free:
+    if free < 0 or len(cand) < free:
         return None
     val = lambda n: M.K[n]["dmg"] * min(5, M.TGT.get(n, 1)) / M.K[n]["cd"]
     pick = sorted(cand, key=lambda n: -val(n))[:free]
@@ -76,7 +76,7 @@ def mob_search(owned, heals):
     imp = True
     while imp:
         imp = False
-        for i in range(len(fixed), 8):
+        for i in range(len(fixed), F.NSLOT[0]):
             for n in cand:
                 if n in sl:
                     continue
@@ -237,7 +237,8 @@ def top(tid, rs, owned, kind, tr=None):
     return b, c, o, u
 
 
-def _setup(levels, steps, ref):
+def _setup(levels, steps, ref, nslot=8):
+    F.NSLOT[0] = nslot
     F.set_levels(levels)
     F.set_steps(steps)
     M.setup(levels, steps)
@@ -303,6 +304,10 @@ def analyze(data):
     owned_map = data.get("owned") or {}
     owned = set(owned_map.keys())
     steps = TR.steps_of(owned_map)
+    try:
+        F.NSLOT[0] = max(5, min(8, int(data.get("slotCount") or 8)))
+    except (TypeError, ValueError):
+        F.NSLOT[0] = 8
     F.set_levels(levels)
     F.set_steps(steps)
     M.setup(levels, steps)
@@ -454,7 +459,7 @@ def analyze(data):
             t["points"] = t["points"] + sg[:1]
     mark_best(trees)
     progress(55, "추천 트리 검증")
-    verify_all(trees, owned, (levels, steps, F.REF[0]))
+    verify_all(trees, owned, (levels, steps, F.REF[0], F.NSLOT[0]))
     progress(97, "커뮤니티 덱 비교")
     # 커뮤니티 덱(깨비지지 유저 덱, 인기순) — 이 사람 강화·각성 기준 점수와 내 추천 대비
     for bd in BUILDS:
@@ -464,7 +469,7 @@ def analyze(data):
             notes.append(f"커뮤니티 덱 '{bd.get('name', '')[:20]}' 계산 실패({type(e).__name__})")
     lv = " · ".join(f"{s} {levels[s]}" for s in STYLE_ORDER if levels.get(s))
     br = f" · 각성 반영 {len(steps)}개" if steps else ""
-    return {"updated": TODAY, "basis": (lv or "강화 정보 없음") + br + ", 도술 8칸", "trees": trees, "notes": notes}
+    return {"updated": TODAY, "basis": (lv or "강화 정보 없음") + br + f", 도술 {F.NSLOT[0]}칸", "trees": trees, "notes": notes}
 
 
 # ---------- Apps Script 통신 ----------

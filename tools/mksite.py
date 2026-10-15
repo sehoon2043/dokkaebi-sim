@@ -65,6 +65,17 @@ rep('.bar .status{',
     '.pn-ver ul{margin:0;padding-left:18px;display:grid;gap:3px;font-size:.9rem}\n'
     '.bar .status{')
 
+# 프리셋은 쓰지 않음: 오른쪽은 추천 트리만. 도술 칸 수는 강화 레벨 위로 옮김(추천 트리 계산에 쓰임)
+rep('<div class="ptabs" role="tablist" aria-label="오른쪽 패널"><button type="button" role="tab" data-rt="presets">내 프리셋</button><button type="button" role="tab" data-rt="recs">추천 트리</button></div>', '')
+rep('let rightTab = "presets", recActive', 'let rightTab = "recs", recActive')
+rep('<label class="toggle">열린 칸<select id="slotCount" style="width:auto"><option>5</option><option>6</option><option>7</option><option>8</option></select></label>', '')
+rep('    <div class="lvrow" id="lvrow" role="group" aria-label="스타일별 강화 레벨"></div>',
+    '    <div class="slotrow"><label class="toggle">도술 칸 수<select id="slotCount" style="width:auto"><option>5</option><option>6</option><option>7</option><option>8</option></select></label>'
+    '<span class="hint">게임에서 열린 도술 칸 수예요. 추천 트리를 이 칸 수에 맞춰 계산해요.</span></div>\n'
+    '    <div class="lvrow" id="lvrow" role="group" aria-label="스타일별 강화 레벨"></div>')
+rep('s.slotCount = s.slotCount || 7;', 's.slotCount = s.slotCount || 8;')
+rep('.rec-copy{', '.slotrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-bottom:10px}.slotrow .hint{margin:0}\n.rec-copy{display:none!important}\n.rec-copy{')
+
 # 계산에 쓰지 않는 캐릭터 능력치 칸은 숨김(저장된 값은 그대로 둠)
 rep('<button type="button" data-go="sec-stats">능력치</button>', '')
 rep('  <section id="sec-stats">', '  <section id="sec-stats" hidden>')
