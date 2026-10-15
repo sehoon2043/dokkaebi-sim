@@ -1,6 +1,6 @@
-# 공개 수첩(브라우저 저장판) → GitHub Pages 사이트(구글 시트 저장 + 자동 분석 결과 표시)
-#   python tools/mksite.py <공개 수첩 html> <출력 index.html> <Apps Script 웹 앱 URL>
-import sys
+# 공개 수첩(브라우저 저장판) → GitHub Pages 사이트(저장 서버 + 자동 분석 결과 표시)
+#   python tools/mksite.py <공개 수첩 html> <출력 index.html> <저장 서버 URL>
+import json, os, sys
 
 src, out, api = sys.argv[1], sys.argv[2], sys.argv[3]
 h = open(src, encoding="utf-8").read()
@@ -46,7 +46,7 @@ rep('.bar .status{',
     '.ana{margin:0 0 12px;padding:10px 14px;border:1px solid var(--accent);border-radius:10px;background:var(--accent-soft)}.ana.warn{border-color:var(--warn)}\n'
     '.ana-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.ana-top b{font-size:.95rem}.ana-top span{font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}\n'
     '.ana-bar{height:8px;margin:7px 0 5px;border-radius:5px;background:var(--line);overflow:hidden}.ana-bar i{display:block;height:100%;width:2%;background:var(--accent);border-radius:5px;transition:width .6s ease}\n'
-    '.ana.warn .ana-bar i{background:var(--warn)}.ana-sub{font-size:.82rem;color:var(--muted)}\n'
+    '.ana.warn .ana-bar i{background:var(--warn)}.ana-sub{font-size:.84rem;color:var(--ink);opacity:.85}\n'
     '.rec-legend{font-size:.78rem;color:var(--muted);margin:2px 0 0}.rec-verify summary{cursor:pointer;font-size:.82rem;color:var(--muted)}\n'
     '.cm-hl{margin:0 0 8px;font-weight:600}.cm-sec{margin-top:8px}.cm-sec h4{margin:0 0 4px;font-size:.9rem;color:var(--accent)}\n'
     '.cm-top{margin:12px 0 4px;padding:10px 12px;border-radius:8px;background:var(--accent-soft);font-weight:600;line-height:1.45}\n'
@@ -74,6 +74,7 @@ rep('    <div class="lvrow" id="lvrow" role="group" aria-label="스타일별 강
     '<span class="hint">게임에서 열린 도술 칸 수예요. 추천 트리를 이 칸 수에 맞춰 계산해요.</span></div>\n'
     '    <div class="lvrow" id="lvrow" role="group" aria-label="스타일별 강화 레벨"></div>')
 rep('s.slotCount = s.slotCount || 7;', 's.slotCount = s.slotCount || 8;')
+
 rep('.rec-copy{', '.slotrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-bottom:10px}.slotrow .hint{margin:0}\n.rec-copy{display:none!important}\n.rec-copy{')
 
 # 계산에 쓰지 않는 캐릭터 능력치 칸은 숨김(저장된 값은 그대로 둠)
@@ -350,10 +351,15 @@ rep('    const ul3 = el("ul", {class:"rec-points alt"}); for (const s of v.lines
     '    const ul3 = el("ul", {class:"rec-points alt"}); for (const s of v.lines) ul3.appendChild(el("li", null, s)); dv.appendChild(ul3); right.appendChild(dv);')
 i = h.index('let RECS = ')
 j = h.index('\n', i)
+# 예시 추천 트리: tools/example_recs.json(실제 분석 결과 한 건)이 있으면 그것으로 바꿈(새 형식 포인트·추천 표시)
+EX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "example_recs.json")
+if os.path.exists(EX_PATH):
+    h = h[:i] + 'let RECS = ' + json.dumps(json.load(open(EX_PATH, encoding="utf-8")), ensure_ascii=False) + ';' + h[j:]
+    j = h.index('\n', i)
 h = h[:j] + '\nconst EXAMPLE_RECS = RECS;' + h[j:]
 rep('$("recBasis").textContent = "참고용 예시 · 계산 기준 캐릭터: " + RECS.basis + " · " + RECS.updated + " 계산. 강화 단계가 다르면 순위가 달라질 수 있습니다.";',
     '$("recBasis").textContent = myRes ? ("내 추천 · " + RECS.basis + " · " + RECS.updated + " 계산" + ((RECS.notes || []).length ? " · " + RECS.notes.join(" ") : ""))'
-    ' : "아직 내 분석 결과가 없어요. 저장하면 2~3분 뒤 자동으로 계산돼요. 아래는 다른 캐릭터 기준 예시입니다(" + RECS.basis + ").";')
+    ' : "아직 내 분석 결과가 없어요. 저장하면 자동으로 계산돼요(위쪽 진행 막대). 아래는 다른 캐릭터 기준 예시예요(" + RECS.basis + ").";')
 
 # 시작: 저장된 닉네임이 있으면 자동 불러오기, 없으면 임시 저장본
 a = h.index('try {\n  const raw = localStorage.getItem(LS);')
@@ -372,6 +378,30 @@ h = h[:a] + r'''(function(){
   try { const raw = localStorage.getItem(LS); if (raw) { state = tidy(normalize(JSON.parse(raw))); renderAll(); } } catch (e) {}
   setStatus("닉네임을 입력하고 불러오기를 누르세요. 처음이면 정보를 입력한 뒤 저장하면 등록돼요");
 })();''' + h[b:]
+# 가독성: 강화 레벨 칸이 좁아 스타일 이름이 세로로 꺾이고 두 자리 숫자가 잘리던 것, 좁은 화면에서는 추천 트리를 도술 입력보다 먼저
+rep('.rec-copy{display:none!important}', '.rec-copy{display:none!important}\n'
+    '.lvrow{grid-template-columns:repeat(auto-fill,minmax(112px,1fr))!important}.lvrow label{white-space:nowrap}.lvrow input{width:3.6em;text-align:right}\n'
+    '@media (max-width:1279.98px){#sec-recs{order:0}}')
+# 좁은 화면(휴대폰): 추천 트리 / 도술 입력을 탭 버튼으로 나눠 한쪽만 보여 줌. PC(1280px 이상)는 두 패널 그대로
+rep('  <div class="cols">',
+    '  <div class="mtabs" role="tablist" aria-label="화면 전환"><button type="button" role="tab" data-mt="recs">추천 트리</button>'
+    '<button type="button" role="tab" data-mt="skills">도술 입력</button></div>\n  <div class="cols">')
+rep('.rec-legend{', '.mtabs{display:none}\n'
+    '@media (max-width:1279.98px){.mtabs{display:flex;gap:6px;margin:0 0 4px}.mtabs button{flex:1;font-weight:600;padding:9px 12px}'
+    '.mtabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}'
+    'body[data-mt="recs"] #sec-skills{display:none}body[data-mt="skills"] #sec-recs{display:none}}\n.rec-legend{')
+rep('$("gmBtn").addEventListener(', r"""// 휴대폰 탭: 마지막으로 본 탭을 기억(기본 추천 트리)
+const LSM = "dosa-notebook-site-mt";
+function setMt(t){
+  document.body.dataset.mt = t;
+  for (const b of document.querySelectorAll(".mtabs button")) b.setAttribute("aria-selected", b.dataset.mt === t ? "true" : "false");
+  try { localStorage.setItem(LSM, t); } catch (e) {}
+}
+for (const b of document.querySelectorAll(".mtabs button")) b.addEventListener("click", () => { setMt(b.dataset.mt); window.scrollTo({top: 0}); });
+(function(){ let t = null; try { t = localStorage.getItem(LSM); } catch (e) {} setMt(t === "skills" ? "skills" : "recs"); })();
+$("gmBtn").addEventListener(""")
+rep('      rightTab = "recs"; renderRight(); setStatus("추천 트리가 갱신됐어요", "ok");',
+    '      rightTab = "recs"; renderRight(); setMt("recs"); setStatus("추천 트리가 갱신됐어요", "ok");')
 h = h.replace("__API__", api)
 assert "localStorage.setItem(LS, JSON.stringify(state)); dirty = false; setStatus(\"저장됨 · 이 브라우저에만\"" not in h
 page = ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n'

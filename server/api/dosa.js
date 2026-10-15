@@ -206,7 +206,9 @@ async function handlePost(b) {
     const forNow = String(b.updatedAt || "");
     const pct = Math.max(0, Math.min(100, Number(b.pct) || 0));
     // 계산이 실제로 시작된 시각(pct>0 첫 보고)을 남겨 남은 시간을 추정한다
-    const start = prev.for === forNow && prev.start ? prev.start : (pct > 0 ? Date.now() : 0);
+    // 같은 저장분을 다시 계산하면(진행률이 줄어듦) 시작 시각을 새로 잡는다
+    const same = prev.for === forNow && prev.start && pct >= (prev.pct || 0);
+    const start = same ? prev.start : (pct > 0 ? Date.now() : 0);
     await db().set("g:" + nick, { for: forNow, pct, stage: String(b.stage || ""), at: Date.now(), start }, { ex: 3600 });
     return out({ ok: true });
   }
