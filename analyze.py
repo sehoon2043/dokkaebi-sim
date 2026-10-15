@@ -150,20 +150,18 @@ def community(bd, owned, ref):
     best = max(((k, cmp[k] / ref[k]) for k in cmp if ref.get(k)), key=lambda x: x[1], default=None)
     label = {"mob": "몰이", "field": "필드 사냥", "boss": "보스"}
     pts = []
-    if missing:
-        pts.append("안 배운 도술: " + ", ".join(missing) + " (배웠다고 가정하고 계산했습니다)")
-    else:
-        pts.append("필요한 도술을 모두 배웠습니다.")
     if best:
         k, r = best
-        pts.append(f"가장 잘 맞는 용도는 {label[k]}이고, 내 추천 트리보다 약 {abs(r - 1) * 100:.0f}% " + ("좋습니다." if r > 1 else "낮습니다.") if abs(r - 1) >= 0.01 else f"가장 잘 맞는 용도는 {label[k]}이고, 내 추천 트리와 비슷합니다.")
+        pts.append(f"{label[k]}용 · 내 추천보다 약 {abs(r - 1) * 100:.0f}% " + ("좋음" if r > 1 else "낮음") if abs(r - 1) >= 0.01 else f"{label[k]}용 · 내 추천과 비슷")
+    if missing:
+        pts.append("안 배운 도술: " + ", ".join(missing) + " (배웠다고 치고 계산)")
     if ult not in ("폭주", "대폭발"):
-        pts.append(f"몰이 점수는 연타·파멸 궁극기 기준 모델이라, 이 덱의 궁극기({ult})·신식 효과와 이동하며 몹을 모으는 효과는 일부만 반영됩니다.")
-    pts.append("인기 유저 덱 · 작성 " + (bd.get("author") or {}).get("name", "익명") + f" · 추천 {bd.get('likes', 0)}")
+        pts.append(f"궁극기 {ult}의 신식·이동 효과는 몰이 계산에 일부만 반영")
+    tail = ["작성 " + (bd.get("author") or {}).get("name", "익명") + f" · 추천 {bd.get('likes', 0)}"]
     nm = bd.get("name") or "이름 없는 덱"
     tab = nm if len(nm) <= 14 else nm[:13] + "…"
     t = {"id": f"comm_{bd.get('id')}", "tab": tab, "sub": nm, "slots": names, "ult": ult, "order": order,
-         "stat": " · ".join(lines), "points": pts[:2] + [EX.flow(order)] + EX.links(order) + pts[2:], "alt": [], "warn": bool(missing)}
+         "stat": " · ".join(lines), "points": pts + EX.links(order) + tail, "alt": [], "warn": bool(missing)}
     return t
 
 
@@ -208,7 +206,7 @@ def suggest(kind, order, ult, owned, tr=0.3):
             if g > best.get(n, (0, ""))[0]:
                 best[n] = (g, x)
     top = sorted(((g, n, x) for n, (g, x) in best.items() if g > 0.03), reverse=True)[:2]
-    return [f"배우면 좋은 도술: {EX.josa(n, '을/를')} 배워 {x} 자리에 넣으면 약 +{g * 100:.0f}% (간이 계산)." for g, n, x in top]
+    return [f"배우면 좋음: {n} ({x} 대신, 약 +{g * 100:.0f}%)" for g, n, x in top]
 
 
 # ---------- 탐색 보강 ----------
@@ -255,6 +253,18 @@ def tree(tid, tab, sub, order, ult, stat, points, alt=None):
             "stat": stat, "points": EX.points(order, ult, points), "alt": alt or [], "warn": False}
 
 
+def mark_best(trees):
+    """분류(몰이·필드 사냥·보스)마다 가장 좋은 트리 하나에 best 표시. 몰이는 힐 없는 몰이, 나머지는 점수(_v) 1위"""
+    mob = next((t for t in trees if t["id"] == "mob"), None) or next((t for t in trees if t["id"].startswith("mob")), None)
+    field = [t for t in trees if "_v" in t and (t["id"] in ("pure", "single", "jhunt") or t["id"].startswith("hunt_"))]
+    boss = [t for t in trees if "_v" in t and (t["id"] == "boss" or t["id"].startswith("boss_"))]
+    for t in [mob, max(field, key=lambda x: x["_v"], default=None), max(boss, key=lambda x: x["_v"], default=None)]:
+        if t:
+            t["best"] = True
+    for t in trees:
+        t.pop("_v", None)
+
+
 def analyze(data):
     levels = {k: int(v or 0) for k, v in (data.get("levels") or {}).items() if str(v).strip() != ""}
     owned_map = data.get("owned") or {}
@@ -286,12 +296,18 @@ def analyze(data):
                 notes.append("몰이: 광역 도술이 부족해 계산하지 못했습니다(연타 광역 3개 또는 파멸 광역 3개 필요).")
             continue
         b, o, ult = r
+        use = ("몹이 한곳에 모이는 곳(엽전 비경 등)에서 가장 빠른 몰이입니다.",
+               f"물약을 먹을 때. 몰이에서 한 칸만 {EX.josa('생명의 축복', '으로/로')} 바꿨습니다.",
+               f"물약이 많이 들 때. 몰이+힐에서 한 칸만 {EX.josa('생명의 흐름', '으로/로')} 바꿨습니다.")[h]
+        pts = [use]
+        if not h:
+            pts.append(f"하단 {F.style(ult)} 3개 → 궁극기 {ult}")
+            if "영혼 소용돌이" not in o:
+                pts.append("영혼 소용돌이를 배우면 몹 모으기가 훨씬 편해집니다.")
+            if M.gathered(o):
+                pts.append("공간 결계는 몹을 모아 줘서 넣었습니다(엽전 비경 실측 약 +6.5%).")
         trees.append(tree(tid, tab, f"힐 {h}개 · 궁극기 {ult}" if h else f"힐 없음 · 궁극기 {ult}", o, ult,
-                          "몹 5마리가 뭉쳐 있는 조건" + (" · 공간 결계로 몹이 더 잘 모임(실측 보정)" if M.gathered(o) else ""), [
-                              f"하단에 {F.style(ult)} 3개를 두어 궁극기 {EX.josa(ult, '이/가')} 나갑니다.",
-                              "영혼 소용돌이가 있으면 맨 앞에서 몹을 모으고 방어력을 깎습니다." if "영혼 소용돌이" in o else "영혼 소용돌이를 배우면 몰이가 더 편해집니다.",
-                              "칸은 사용 순서대로 놓았습니다." if not h else f"몰이{'+힐' if h == 2 else ''} 트리에서 한 칸만 {EX.josa(('생명의 축복', '생명의 흐름')[h - 1], '으로/로')} 바꾸고 나머지는 그대로입니다."] + (
-                              ["공간 결계는 피해보다 몹을 모으는 효과가 커서 넣었습니다(엽전 비경 실측 기준 약 +6.5%)."] if M.gathered(o) else [])))
+                          "몹 5마리가 뭉쳐 있는 조건" + (" · 공간 결계로 몹이 더 잘 모임(실측 보정)" if M.gathered(o) else ""), pts))
     # 필드 사냥: 몹 체력 기준(REF)은 이 사람의 평범(원거리) 트리 초당 피해
     F.REF[0] = 290.0
     rng = F.search(owned, "ranged", False, seeds=4)
@@ -300,7 +316,6 @@ def analyze(data):
         rng = F.search(owned, "ranged", False, seeds=4)
     single_top = top("single", rng, owned, "field", 0.3) if rng else None
     base = single_top[0] if rng else None
-    SEQ = "칸은 사용 순서대로 놓았습니다."
 
     def rel(v, ref, name):
         if not ref:
@@ -321,23 +336,25 @@ def analyze(data):
         pure_b = b0
         trees.append(tree("pure", "완전 단일", f"단일 대상 도술만 · 궁극기 {u}", o, u,
                           stat(f"1분에 약 {b0:.1f}마리 (몹 1~5초 처치, 몹 사이 이동 0.3초)", rel(b0, base, "평범 사냥")),
-                          ["광역 도술 없이 한 마리만 때리는 트리입니다. 옆 몹을 건드리기 싫거나 몹이 띄엄띄엄 있을 때 쓰세요.", SEQ]))
+                          ["몹이 띄엄띄엄 있거나 옆 몹을 건드리기 싫을 때. 광역 도술 없이 한 마리씩 잡습니다."]))
+        trees[-1]["_v"] = b0
     puh = F.search(owned, "pure", True, seeds=3)
     if puh:
         b0, c, o, u = top("pureh", puh, owned, "field", 0.3)
         trees.append(tree("pureh", "완전 단일+힐", f"단일 대상 도술만 + 생명의 축복 · 궁극기 {u}", o, u,
-                          stat(f"1분에 약 {b0:.1f}마리", rel(b0, pure_b, "완전 단일")), ["물약이 많이 들 때 쓰세요.", SEQ]))
+                          stat(f"1분에 약 {b0:.1f}마리", rel(b0, pure_b, "완전 단일")), ["완전 단일에서 물약이 많이 들 때."]))
     if rng:
         b0, c, o, u = single_top
         trees.append(tree("single", "평범", f"한 마리씩 잡지만 광역 도술 섞음 · 궁극기 {u}", o, u,
                           stat(f"1분에 약 {b0:.1f}마리 (몹 1~5초 처치, 몹 사이 이동 0.3초)", rel(b0, pure_b, "완전 단일")),
-                          ["광역 도술은 몹이 붙어 있으면 덤으로 더 맞습니다. 계산은 몹 한 마리 기준입니다.", f"하단에 {F.style(u)} 3개를 두어 궁극기 {EX.josa(u, '이/가')} 나갑니다.", SEQ],
+                          ["일반 필드 사냥의 기본. 광역 도술이 섞여 몹이 붙어 있으면 덤으로 더 잡힙니다.", f"하단 {F.style(u)} 3개 → 궁극기 {u}"],
                           [f"2위({(rng[1][0] / b0 - 1) * 100:+.1f}%): {', '.join(rng[1][1])}"] if len(rng) > 1 and sorted(rng[1][1]) != sorted(c) else []))
+        trees[-1]["_v"] = b0
     rh = F.search(owned, "ranged", True, seeds=4)
     if rh:
         b0, c, o, u = top("singleh", rh, owned, "field", 0.3)
         trees.append(tree("singleh", "평범+힐", f"평범 사냥 + 생명의 축복 · 궁극기 {u}", o, u,
-                          stat(f"1분에 약 {b0:.1f}마리", rel(b0, base, "평범 사냥")), ["물약이 많이 들면 이 트리를 쓰세요. 원거리라 근접 절명보다 덜 맞습니다.", SEQ]))
+                          stat(f"1분에 약 {b0:.1f}마리", rel(b0, base, "평범 사냥")), ["평범 사냥에서 물약이 많이 들 때. 원거리라 근접보다 덜 맞습니다."]))
     for heal, tid, tab in ((False, "jhunt", "절명"), (True, "jhunt_h", "절명+힐")):
         me = F.search(owned, "melee", heal, seeds=4 if not heal else 3)
         if not me:
@@ -347,8 +364,10 @@ def analyze(data):
         k10 = F.kills(c, o, 1.0)
         trees.append(tree(tid, tab, "근접 필드 사냥" + (", 힐 1개" if heal else ", 힐 없음") + " · 궁극기 암습", o, "암습",
                           stat(f"1분에 약 {b0:.1f}마리 (몹 사이 이동 0.7초)", f"촘촘하면(0.4초) 약 {k04:.1f}마리", f"흩어져 있으면(1초) 약 {k10:.1f}마리"),
-                          ["몹이 촘촘히 붙어 있는 곳에서 가장 빠르고, 흩어져 있으면 평범(원거리)과 같거나 느립니다." if not heal else "힐을 넣을 거면 보통 평범+힐(원거리)이 더 빠르고 덜 맞습니다.",
-                           "하단에 절명 3개를 두어 암습이 나갑니다. 암습은 순서 뒤쪽이라 다른 도술이 쿨일 때만 씁니다.", SEQ]))
+                          ["몹이 촘촘한 곳에서 빠름. 흩어져 있으면 평범이 낫습니다." if not heal else "근접으로 해야 할 때만. 보통은 평범+힐이 더 빠르고 덜 맞습니다.",
+                           "하단 절명 3개 → 궁극기 암습"]))
+        if not heal:
+            trees[-1]["_v"] = b0
     ref["field"] = base
     bs = F.boss_search(owned, seeds=5)
     boss_b = None
@@ -356,8 +375,9 @@ def analyze(data):
         b, c, o, _ = top("boss", bs, owned, "boss")
         ref["boss"] = boss_b = b
         trees.append(tree("boss", "절명 보스", "절명 + 저격, 기습 안 씀 · 궁극기 암습", o, "암습", "보스·필드보스·레이드용",
-                          ["보스·필드보스·레이드용입니다. 하단에 절명 3개를 두어 암습이 나갑니다.", "칸은 사용 순서대로 놓았습니다."],
+                          ["하단 절명 3개 → 궁극기 암습"],
                           [f"2위({(bs[1][0] / b - 1) * 100:+.1f}%): {', '.join(bs[1][1])}"] if len(bs) > 1 and sorted(bs[1][1]) != sorted(c) else []))
+        trees[-1]["_v"] = b
     # 주력 스타일별 트리: 공격 도술 3개 이상 배운 스타일마다 보스(궁극기 그 스타일) · 사냥
     P = F.pool(owned)
     cnt = {st: sum(F.style(n) == st for n in P if n not in F.HEALS) for st in STYLE_ORDER}
@@ -373,7 +393,8 @@ def analyze(data):
                     cmp_ = " · 절명 보스와 비슷" if abs(d) < 1 else f" · 절명 보스보다 약 {abs(d):.0f}% " + ("높음" if d > 0 else "낮음")
                 ref["boss"] = max(ref["boss"] or 0, b)
                 trees.append(tree("boss_" + st, st + " 보스", f"{st} 위주 · 궁극기 {u}", o, u, "보스·필드보스·레이드용" + cmp_,
-                                  [f"하단에 {st} 3개를 두어 궁극기 {EX.josa(u, '이/가')} 나갑니다.", SEQ]))
+                                  [f"하단 {st} 3개 → 궁극기 {u}"]))
+                trees[-1]["_v"] = b
         if st not in ("절명", "저격", "파멸"):
             hs = F.style_hunt(owned, st, seeds=3)
             if hs:
@@ -382,7 +403,8 @@ def analyze(data):
                 u = F.S.ULT_OF.get(st)
                 trees.append(tree("hunt_" + st, st + " 사냥", f"{st} 위주 필드 사냥 · 궁극기 {u}", o, u,
                                   stat(f"1분에 약 {b:.1f}마리 (몹 사이 이동 {tr_}초)", rel(b, base, "평범 사냥")),
-                                  [f"하단에 {st} 3개를 두어 궁극기 {EX.josa(u, '이/가')} 나갑니다.", SEQ]))
+                                  [f"하단 {st} 3개 → 궁극기 {u}"]))
+                trees[-1]["_v"] = b
     # 주요 트리: 안 배운 도술 중 넣으면 좋은 것
     for t in trees:
         kind = {"mob": "mob", "single": "field", "jhunt": "field", "boss": "boss"}.get(t["id"])
@@ -393,7 +415,8 @@ def analyze(data):
         except Exception:
             sg = []
         if sg:
-            t["points"] = t["points"][:-1] + sg + t["points"][-1:] if t["points"] and t["points"][-1].startswith("신식") else t["points"] + sg
+            t["points"] = t["points"] + sg[:1]
+    mark_best(trees)
     verify_all(trees, owned)
     # 커뮤니티 덱(깨비지지 유저 덱, 인기순) — 이 사람 강화·각성 기준 점수와 내 추천 대비
     for bd in BUILDS:

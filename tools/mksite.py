@@ -22,16 +22,26 @@ rep('.bar .status{','.auth{display:flex;flex-wrap:wrap;gap:6px;align-items:cente
 # 패치노트: 버튼 + 창. 내용은 patchnotes.json(사이트 저장소)만 고치면 바뀜
 rep('<button class="primary" id="saveBtn" type="button">저장</button>',
     '<button class="primary" id="saveBtn" type="button">저장</button>\n    <button type="button" id="pnBtn" class="pn-btn">패치노트<span class="pn-dot" id="pnDot" hidden></span></button>'
-    '\n    <button type="button" id="cmBtn" class="pn-btn">커뮤니티 소식<span class="pn-dot" id="cmDot" hidden></span></button>')
+    '\n    <button type="button" id="cmBtn" class="pn-btn">커뮤니티 소식<span class="pn-dot" id="cmDot" hidden></span></button>'
+    '\n    <button type="button" id="gmBtn" class="pn-btn">길드원 현황</button>')
 rep('  <div class="cols">',
     '  <dialog id="pnDlg" aria-labelledby="pnTitle"><div class="pn-head"><h2 id="pnTitle">패치노트</h2>'
     '<button type="button" id="pnClose" aria-label="닫기">닫기</button></div><div id="pnBody">불러오는 중…</div></dialog>\n'
     '  <dialog id="cmDlg" class="pn-dlg" aria-labelledby="cmTitle"><div class="pn-head"><h2 id="cmTitle">커뮤니티 소식</h2>'
-    '<button type="button" id="cmClose" aria-label="닫기">닫기</button></div><div id="cmBody">불러오는 중…</div></dialog>\n\n  <div class="cols">')
+    '<button type="button" id="cmClose" aria-label="닫기">닫기</button></div><div id="cmBody">불러오는 중…</div></dialog>\n'
+    '  <dialog id="gmDlg" class="pn-dlg" aria-labelledby="gmTitle"><div class="pn-head"><h2 id="gmTitle">길드원 현황</h2>'
+    '<button type="button" id="gmClose" aria-label="닫기">닫기</button></div><div id="gmBody">불러오는 중…</div></dialog>\n\n  <div class="cols">')
 rep('.bar .status{',
     '.pn-btn{position:relative}.pn-dot{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:var(--warn)}\n'
     '#pnDlg,#cmDlg{width:min(600px,calc(100vw - 32px));max-height:80vh;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0}\n'
-    '#pnDlg::backdrop,#cmDlg::backdrop{background:rgba(0,0,0,.45)}\n#cmBody{padding:4px 16px 16px}\n'
+    '#pnDlg::backdrop,#cmDlg::backdrop,#gmDlg::backdrop{background:rgba(0,0,0,.45)}\n#cmBody,#gmBody{padding:4px 16px 16px}\n'
+    '#gmDlg{width:min(860px,calc(100vw - 32px));max-height:85vh;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0}\n'
+    '.gm-wrap{overflow-x:auto;margin-top:6px}.gm-tbl{border-collapse:collapse;font-size:.85rem;white-space:nowrap;width:100%}\n'
+    '.gm-tbl th,.gm-tbl td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:center}.gm-tbl th{font-size:.76rem;color:var(--muted);font-weight:600}\n'
+    '.gm-tbl td.nk,.gm-tbl th.nk{text-align:left;position:sticky;left:0;background:var(--panel)}.gm-tbl td.nk{font-weight:600}\n'
+    '.gm-tbl td.z{color:var(--muted)}.gm-tbl td.top{font-weight:700;color:var(--accent)}.gm-tbl td.main{font-size:.78rem;color:var(--muted)}\n'
+    '.gm-tbl tr.me td{background:var(--accent-soft)}.gm-tbl tfoot td{color:var(--muted);font-size:.8rem;border-bottom:0}\n'
+    '.rec-legend{font-size:.78rem;color:var(--muted);margin:2px 0 0}.rec-verify summary{cursor:pointer;font-size:.82rem;color:var(--muted)}\n'
     '.cm-hl{margin:0 0 8px;font-weight:600}.cm-sec{margin-top:8px}.cm-sec h4{margin:0 0 4px;font-size:.9rem;color:var(--accent)}\n'
     '.cm-top{margin:12px 0 4px;padding:10px 12px;border-radius:8px;background:var(--accent-soft);font-weight:600;line-height:1.45}\n'
     '.cm-meta{font-size:.8rem;color:var(--muted);margin:6px 0 2px}\n'
@@ -215,10 +225,68 @@ $("cmBtn").addEventListener("click", () => {
 });
 $("cmClose").addEventListener("click", () => $("cmDlg").close());
 $("cmDlg").addEventListener("click", e => { if (e.target === $("cmDlg")) $("cmDlg").close(); });
+// 길드원 현황: 저장된 길드원의 도술 강화 레벨 모아 보기(서버 members는 닉네임·강화·도술 수·각성만 줌)
+const GM_ST = ["절명", "연타", "강타", "척살", "저격", "주술", "파멸", "강인", "기동", "헌신", "기만", "제압"];
+async function gmRender(){
+  const box = $("gmBody"); box.textContent = "불러오는 중…";
+  let r = null;
+  try { r = await api({a: "members"}); } catch (e) {}
+  box.textContent = "";
+  if (!r || !r.ok || !r.list) { box.textContent = "길드원 정보를 불러오지 못했어요. 잠시 뒤 다시 열어 보세요."; return; }
+  const lv = (m, s) => Number((m.levels || {})[s]) || 0;
+  const sum = m => GM_ST.reduce((a, s) => a + lv(m, s), 0);
+  const L = r.list.filter(m => sum(m) > 0).sort((a, b) => sum(b) - sum(a));
+  if (!L.length) { box.textContent = "아직 강화 레벨을 저장한 길드원이 없어요."; return; }
+  const cols = GM_ST.filter(s => L.some(m => lv(m, s) > 0));
+  const mx = {}; for (const s of cols) mx[s] = Math.max(...L.map(m => lv(m, s)));
+  box.appendChild(cel("p", "cm-meta", "길드원 " + L.length + "명 · 강화 레벨 합계 순 · 열마다 가장 높은 레벨은 색으로 표시 · 각성 칸에 마우스를 올리면 도술 목록"));
+  const wrap = cel("div", "gm-wrap"), tb = cel("table", "gm-tbl");
+  const hr = cel("tr"); hr.appendChild(cel("th", "nk", "닉네임")); hr.appendChild(cel("th", null, "주력"));
+  for (const s of cols) hr.appendChild(cel("th", null, s));
+  for (const x of ["합계", "도술", "각성", "저장"]) hr.appendChild(cel("th", null, x));
+  const th = cel("thead"); th.appendChild(hr); tb.appendChild(th);
+  const bd = cel("tbody");
+  for (const m of L) {
+    const tr = cel("tr", auth && auth.nick === m.nick ? "me" : null);
+    tr.appendChild(cel("td", "nk", m.nick));
+    const top = cols.filter(s => lv(m, s) > 0).sort((a, b) => lv(m, b) - lv(m, a)).slice(0, 2);
+    tr.appendChild(cel("td", "main", top.join("·")));
+    for (const s of cols) { const v = lv(m, s); tr.appendChild(cel("td", v === 0 ? "z" : v === mx[s] ? "top" : null, v ? String(v) : "·")); }
+    tr.appendChild(cel("td", null, String(sum(m))));
+    tr.appendChild(cel("td", null, String(m.owned || 0)));
+    const aw = Object.entries(m.awaken || {});
+    const ac = cel("td", aw.length ? null : "z", aw.length ? String(aw.length) : "·");
+    if (aw.length) ac.title = aw.map(([n, k]) => n + " " + k + "단계").join("\n");
+    tr.appendChild(ac);
+    const dt = new Date(Number(m.updatedAt));
+    tr.appendChild(cel("td", "z", isNaN(dt) ? "" : (dt.getMonth() + 1) + "/" + dt.getDate()));
+    bd.appendChild(tr);
+  }
+  tb.appendChild(bd);
+  const fr = cel("tr"); fr.appendChild(cel("td", "nk", "평균")); fr.appendChild(cel("td"));
+  for (const s of cols) fr.appendChild(cel("td", null, (L.reduce((a, m) => a + lv(m, s), 0) / L.length).toFixed(1)));
+  fr.appendChild(cel("td", null, (L.reduce((a, m) => a + sum(m), 0) / L.length).toFixed(0)));
+  for (let i = 0; i < 3; i++) fr.appendChild(cel("td"));
+  const tf = cel("tfoot"); tf.appendChild(fr); tb.appendChild(tf);
+  wrap.appendChild(tb); box.appendChild(wrap);
+  box.appendChild(cel("p", "cm-note", "수첩에 저장한 강화 레벨 기준이에요. 강화를 올렸으면 수첩에서 고치고 저장해 주세요."));
+}
+$("gmBtn").addEventListener("click", () => { $("gmDlg").showModal(); gmRender(); });
+$("gmClose").addEventListener("click", () => $("gmDlg").close());
+$("gmDlg").addEventListener("click", e => { if (e.target === $("gmDlg")) $("gmDlg").close(); });
 ''' + h[b:]
 
 # 추천 트리: 내 분석 결과가 있으면 그걸, 없으면 예시
 rep('const RECS = ', 'let RECS = ')
+rep('"aria-selected": i === recActive ? "true" : "false"}, t.tab);',
+    '"aria-selected": i === recActive ? "true" : "false"}, (t.best ? "★ " : "") + t.tab);')
+rep('    rows[g].appendChild(b);\n  });\n',
+    '    rows[g].appendChild(b);\n  });\n  if (RECS.trees.some(x => x.best)) tabs.appendChild(el("p", {class:"rec-legend"}, "★ 분류마다 가장 추천하는 트리"));\n')
+rep('head.appendChild(el("b", null, t.tab + " · " + t.sub)); box.appendChild(head);',
+    'head.appendChild(el("b", null, t.tab + " · " + t.sub)); if (t.best) head.appendChild(el("span", {class:"vbadge good"}, "추천")); box.appendChild(head);')
+rep('    const ul3 = el("ul", {class:"rec-points alt"}); for (const s of v.lines) ul3.appendChild(el("li", null, s)); right.appendChild(ul3);',
+    '    const dv = el("details", {class:"rec-verify"}); dv.appendChild(el("summary", null, "검증 내용 보기"));\n'
+    '    const ul3 = el("ul", {class:"rec-points alt"}); for (const s of v.lines) ul3.appendChild(el("li", null, s)); dv.appendChild(ul3); right.appendChild(dv);')
 i = h.index('let RECS = ')
 j = h.index('\n', i)
 h = h[:j] + '\nconst EXAMPLE_RECS = RECS;' + h[j:]

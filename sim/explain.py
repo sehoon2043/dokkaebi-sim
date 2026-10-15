@@ -66,7 +66,7 @@ def flow(order):
 
 
 def links(order):
-    """트리 안에서 실제로 이어지는 연계와 놓친 연계"""
+    """트리 안에서 실제로 이어지는 핵심 연계(최대 2개)와 놓친 연계(1개)를 짧게"""
     have = {}
     for n in order:
         for g in GIVE.get(n, []):
@@ -77,17 +77,14 @@ def links(order):
             continue
         src = [x for x in have.get(need, []) if x != tgt]
         if src:
-            got.append(f"{'·'.join(_s(x) for x in src)}의 {need} → {_s(tgt)} {gain}")
+            got.append(f"{_s(src[0])} {need} → {_s(tgt)} {gain}")
         elif need in ("원소", "동상", "화상"):
-            miss.append(f"{josa(_s(tgt), '은/는')} {josa(need, '이/가')} 있을 때 {gain}인데 이 트리엔 {josa(need, '을/를')} 거는 도술이 없습니다")
+            miss.append(f"{need} 거는 도술을 넣으면 {_s(tgt)} {gain}")
     out = []
     if got:
-        out.append("연계: " + " / ".join(got) + ".")
+        out.append("연계: " + " / ".join(got[:2]))
     if miss:
-        out.append("놓친 연계: " + " / ".join(miss[:2]) + ".")
-    amp = [x for x in order if x in ("요혼격", "꿰뚫는 저격", "공간 결계")]
-    if amp:
-        out.append(f"{josa('·'.join(_s(x) for x in amp), '으로/로')} 받는 피해를 올린 뒤 5초 안에 큰 도술이 들어가도록 순서를 맞췄습니다(몹이 금방 죽는 필드에서는 효과가 작습니다).")
+        out.append("더 좋게: " + miss[0])
     return out
 
 
@@ -108,9 +105,5 @@ def style_note(ult):
 
 
 def points(order, ult, extra_first=()):
-    o = [x for x in order]
-    out = list(extra_first)
-    out.append(flow(o))
-    out += links(o)
-    out += style_note(ult)
-    return out
+    """포인트는 짧게: 용도·궁극기 조건(호출하는 쪽) + 핵심 연계. 사용 순서는 화면에 따로 나오므로 흐름 문장은 넣지 않는다"""
+    return list(extra_first) + links(list(order))
