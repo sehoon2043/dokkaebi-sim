@@ -12,6 +12,7 @@ AMP0 = dict(S.AMP_HIT)
 EV = []
 _src = inspect.getsource(S.run).replace("def run(", "def run_ev(", 1)
 _src = _src.replace('        tot += pick["damage"] * mult * vm\n', '        tot += pick["damage"] * mult * vm; EV.append((now, pick["damage"] * mult * vm))\n')
+_src = _src.replace('                tot += BASIC * (min(nt, horizon) - now)\n', '                tot += BASIC * (min(nt, horizon) - now); EV.append((now, BASIC * (min(nt, horizon) - now)))\n')
 _src = _src.replace('gain = 1 if FORMS_PER_CAST else pick["hits"]', 'gain = (1 if FORMS_PER_CAST else pick["hits"]) if pick["damage"] > 0 else 0')
 exec(_src, S.__dict__)
 S.__dict__["EV"] = EV
@@ -19,8 +20,12 @@ S.__dict__["EV"] = EV
 OH = 0.3
 HEALS = {"생명의 축복", "생명의 흐름"}
 LV = {"*": 0}
-HUNT_P = [(0.8, 0.55, 5), (0.9, 0.6, 5)]
-BOSS_P = [(0.8, 0.55, 5), (0.75, 0.5, 5), (0.85, 0.55, 5), (0.8, 0.55, 4)]
+# (저격 피해 보정, 암습 피해 보정, 검의 형상 쿨 감소): 10/15 허수아비 실측 2회(절명 보스 트리 5분)에 맞춤
+HUNT_P = [(0.95, 0.65, 6), (1.0, 0.65, 6)]
+BOSS_P = [(1.0, 0.65, 6), (0.95, 0.65, 6), (1.0, 0.7, 5), (1.05, 0.65, 6)]
+# 보스 평타: 도술을 기다리는 1초마다 모델 단위 피해. 같은 실측에서 평타 205회·전체의 9.3% → 약 283
+# 필드는 이동과 겹치고 몹이 금방 죽어서 아직 넣지 않음
+BASIC_BOSS = 283.0
 HS = (1.5, 3.0, 5.0)
 T = 300
 REF = [290.0]
@@ -229,6 +234,7 @@ def search(owned, kind, heal, seeds=5, travel=None):
 def boss_score(names, order):
     S.AMP_HIT.clear()
     S.AMP_HIT.update(AMP0)
+    S.BASIC = BASIC_BOSS
     tot = 0
     for m, k, c in BOSS_P:
         S.CD_RED = c
@@ -241,6 +247,7 @@ def boss_score(names, order):
         od.sort(key=lambda v: order.index(v["n"]) if v["n"] in order else 99)
         for H in (60, 120):
             tot += S.run([dict(x) for x in od], mem, H) * (2 if H == 120 else 1)
+    S.BASIC = 0.0
     return tot / (3 * len(BOSS_P))
 
 
@@ -256,7 +263,10 @@ def _boss_quick(names):
         elif v["style"] == "저격":
             v["damage"] *= m
     od.sort(key=lambda a: (not a["u"], -a["damage"] / a["motion"]))
-    return S.run(od, mem, 120)
+    S.BASIC = BASIC_BOSS
+    r = S.run(od, mem, 120)
+    S.BASIC = 0.0
+    return r
 
 
 def boss_opt(names, start):

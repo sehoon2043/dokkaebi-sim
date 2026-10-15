@@ -84,6 +84,8 @@ SCENS = [
     ("저격 피해가 10% 약할 때", "field boss", _p_scale(0, 0.90)),
     ("검의 형상 쿨 감소가 절반일 때", "field boss", _p_scale(2, 0.5)),
     ("받는 피해 증가(요혼격 등)가 절반일 때", "boss", _amp(0.5)),
+    ("평타 피해가 절반일 때", "boss", lambda: _set(F, "BASIC_BOSS", F.BASIC_BOSS * 0.5)),
+    ("평타 피해가 1.5배일 때", "boss", lambda: _set(F, "BASIC_BOSS", F.BASIC_BOSS * 1.5)),
     ("몹 체력이 0.6배일 때(약한 사냥터)", "field", lambda: _set(F, "HS", tuple(x * 0.6 for x in F.HS))),
     ("몹 체력이 1.6배일 때(강한 사냥터)", "field", lambda: _set(F, "HS", tuple(x * 1.6 for x in F.HS))),
     ("몹 사이 이동이 2배일 때", "field", _ctx(tr=2.0)),
