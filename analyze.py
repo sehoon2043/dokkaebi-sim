@@ -395,14 +395,14 @@ def analyze(data):
         if sg:
             t["points"] = t["points"][:-1] + sg + t["points"][-1:] if t["points"] and t["points"][-1].startswith("신식") else t["points"] + sg
     verify_all(trees, owned)
-    # 커뮤니티 덱(깨비지지 유저 덱, 인기순) — 이 사람 강화·돌파 기준 점수와 내 추천 대비
+    # 커뮤니티 덱(깨비지지 유저 덱, 인기순) — 이 사람 강화·각성 기준 점수와 내 추천 대비
     for bd in BUILDS:
         try:
             trees.append(community(bd, owned, ref))
         except Exception as e:
             notes.append(f"커뮤니티 덱 '{bd.get('name', '')[:20]}' 계산 실패({type(e).__name__})")
     lv = " · ".join(f"{s} {levels[s]}" for s in STYLE_ORDER if levels.get(s))
-    br = f" · 돌파 반영 {len(steps)}개" if steps else ""
+    br = f" · 각성 반영 {len(steps)}개" if steps else ""
     return {"updated": TODAY, "basis": (lv or "강화 정보 없음") + br + ", 도술 8칸", "trees": trees, "notes": notes}
 
 
