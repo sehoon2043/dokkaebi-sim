@@ -74,7 +74,7 @@ rep('function changed(){ dirty = true; setStatus("저장 안 됨");',
 
 a = h.index('const LS = "dosa-notebook-public-v1";')
 b = h.index('function barH(){')
-h = h[:a] + r'''const LS = "dosa-notebook-site-v1", LSA = "dosa-notebook-site-auth";
+h = h[:a] + r'''const LS = "dosa-notebook-site-v1", LSA = "dosa-notebook-site-auth", LSR = "dosa-notebook-site-res";
 const API = "__API__";
 let auth = null, myRes = null;
 function saveDraft(){ try { localStorage.setItem(LS, JSON.stringify(state)); } catch (e) {} }
@@ -97,7 +97,7 @@ function applyResult(res){
 }
 function remember(c){ auth = c; try { localStorage.setItem(LSA, JSON.stringify({nick: c.nick})); } catch (e) {} }
 async function load(c){
-  setStatus("불러오는 중…");
+  setStatus("서버에서 최신 정보를 불러오는 중… (화면은 마지막으로 받은 내용)");
   try {
     const r = await api({a: "load", nick: c.nick, pin: c.pin});
     if (!r.ok && r.err === "none") { remember(c); setStatus("새 닉네임이에요. 정보를 입력하고 저장을 누르면 등록돼요", "ok"); return; }
@@ -105,6 +105,8 @@ async function load(c){
     remember(c);
     state = tidy(normalize(r.data || {})); dirty = false; renderAll();
     applyResult(r.result);
+    // 서버 응답이 느릴 때가 있어 마지막으로 받은 내용을 이 브라우저에 보관(다음에 열면 먼저 보여 줌)
+    saveDraft(); try { localStorage.setItem(LSR, JSON.stringify({nick: c.nick, res: r.result || null})); } catch (e) {}
     const pending = !r.result || String(r.resultFor) !== String(r.updatedAt);
     setStatus(c.nick + " 불러옴" + (pending ? " · 마지막 저장 내용을 분석하는 중이에요(2~3분)" : " · 추천 트리가 최신이에요"), "ok");
   } catch (e) { setStatus("서버에 연결하지 못했어요. 잠시 뒤 다시 시도하세요", "warn"); }
@@ -309,7 +311,14 @@ b = h.index('\n', h.index('} catch (e) { setStatus("이 브라우저는 저장�
 h = h[:a] + r'''(function(){
   let c = null;
   try { c = JSON.parse(localStorage.getItem(LSA) || "null"); } catch (e) {}
-  if (c && c.nick) { $("nick").value = c.nick; load({nick: c.nick, pin: PIN}); return; }
+  if (c && c.nick) {
+    $("nick").value = c.nick;
+    try {
+      const raw = localStorage.getItem(LS); if (raw) { state = tidy(normalize(JSON.parse(raw))); renderAll(); }
+      const cr = JSON.parse(localStorage.getItem(LSR) || "null"); if (cr && cr.nick === c.nick && cr.res) applyResult(cr.res);
+    } catch (e) {}
+    load({nick: c.nick, pin: PIN}); return;
+  }
   try { const raw = localStorage.getItem(LS); if (raw) { state = tidy(normalize(JSON.parse(raw))); renderAll(); } } catch (e) {}
   setStatus("닉네임을 입력하고 불러오기를 누르세요. 처음이면 정보를 입력한 뒤 저장하면 등록돼요");
 })();''' + h[b:]
