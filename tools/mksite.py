@@ -242,7 +242,7 @@ function gmFetch(){
 }
 function gmRender(){
   const box = $("gmBody"); box.textContent = "";
-  if (!GM) { box.textContent = gmBusy ? "불러오는 중… (서버가 느리면 10초 넘게 걸려요)" : "길드원 정보를 불러오지 못했어요. 잠시 뒤 다시 열어 보세요."; return; }
+  if (!GM) { box.textContent = gmBusy ? "불러오는 중…" : "길드원 정보를 불러오지 못했어요. 잠시 뒤 다시 열어 보세요."; return; }
   const r = GM;
   const lv = (m, s) => Number((m.levels || {})[s]) || 0;
   const sum = m => GM_ST.reduce((a, s) => a + lv(m, s), 0);

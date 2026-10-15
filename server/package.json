@@ -1,0 +1,8 @@
+{
+  "name": "dosa-api",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@upstash/redis": "1.39.0"
+  }
+}

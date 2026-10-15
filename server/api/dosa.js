@@ -1,0 +1,231 @@
+// 도사 수첩 저장 서버 (Vercel Functions + Upstash Redis). 예전 Apps Script(Code.gs)와 같은 요청·응답 형식
+//   GET  ?a=load&nick=&pin=        내 수첩 + 분석 결과
+//   GET  ?a=members                길드원 현황(닉네임·강화 레벨·각성만)
+//   GET  ?a=pending|all&key=       분석할 프로필(관리자)
+//   POST {a:"save", nick, pin, data, create}
+//   POST {a:"result", key, nick, updatedAt, result}   분석 결과 기록(관리자)
+//   POST {a:"import", key, profiles:[...]}            옮겨 오기(관리자)
+// 환경 변수: ADMIN_KEY, GH_TOKEN(저장 직후 GitHub Actions 분석 요청), Upstash 연결 값(KV_REST_API_URL·KV_REST_API_TOKEN 또는 UPSTASH_REDIS_REST_URL·TOKEN)
+// Redis 키: p:<닉네임> 프로필 전체, m:<닉네임> 길드원 현황 요약, nicks 닉네임 목록, lastDispatch
+import { Redis } from "@upstash/redis";
+import { createHash } from "node:crypto";
+
+const MAX_DATA = 45000;
+const MEMBERS_HIDE = ["테스트"];
+const GH_REPO = "sehoon2043/dokkaebi-sim";
+const GH_WORKFLOW = "analyze.yml";
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+let redis = null;
+function db() {
+  if (!redis) {
+    redis = new Redis({
+      url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+  }
+  return redis;
+}
+
+function out(obj) {
+  return new Response(JSON.stringify(obj), { headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" } });
+}
+
+function cleanNick(s) {
+  return String(s || "").trim().slice(0, 16);
+}
+
+function hash(nick, pin) {
+  return createHash("sha256").update("dosa|" + nick + "|" + pin, "utf8").digest("hex");
+}
+
+function isAdmin(key) {
+  return Boolean(process.env.ADMIN_KEY) && key === process.env.ADMIN_KEY;
+}
+
+function summary(p) {
+  const d = p.data || {};
+  const owned = d.owned || {};
+  const awaken = {};
+  for (const k of Object.keys(owned)) {
+    const s = Number((owned[k] || {}).br || 0);
+    if (s > 0) {
+      awaken[k] = s;
+    }
+  }
+  return { nick: p.nick, levels: d.levels || {}, owned: Object.keys(owned).length, awaken, updatedAt: p.updatedAt };
+}
+
+function pub(p) {
+  return { nick: p.nick, data: p.data, updatedAt: p.updatedAt, result: p.result, resultFor: p.resultFor, resultAt: p.resultAt };
+}
+
+async function getMany(prefix) {
+  const nicks = await db().smembers("nicks");
+  if (!nicks.length) {
+    return [];
+  }
+  const vals = await db().mget(...nicks.map((n) => prefix + n));
+  return vals.filter(Boolean);
+}
+
+async function putProfile(prof) {
+  const p = db().pipeline();
+  p.set("p:" + prof.nick, prof);
+  p.set("m:" + prof.nick, summary(prof));
+  p.sadd("nicks", prof.nick);
+  await p.exec();
+}
+
+// 저장 직후 GitHub Actions 분석 실행 요청 (30초 안 중복 요청은 생략)
+async function dispatch() {
+  const token = process.env.GH_TOKEN;
+  if (!token) {
+    return "no-token";
+  }
+  const last = Number((await db().get("lastDispatch")) || 0);
+  if (Date.now() - last < 30 * 1000) {
+    return "skip";
+  }
+  const res = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows/${GH_WORKFLOW}/dispatches`, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json", "Content-Type": "application/json", "User-Agent": "dosa-api" },
+    body: JSON.stringify({ ref: "main" }),
+  });
+  if (res.status === 204) {
+    await db().set("lastDispatch", String(Date.now()));
+    return "ok";
+  }
+  return "fail-" + res.status;
+}
+
+async function handleGet(p) {
+  if (p.a === "load") {
+    const nick = cleanNick(p.nick);
+    const prof = nick ? await db().get("p:" + nick) : null;
+    if (!prof) {
+      return out({ ok: false, err: "none" });
+    }
+    if (prof.pinHash !== hash(nick, String(p.pin || ""))) {
+      return out({ ok: false, err: "pin" });
+    }
+    return out({ ok: true, ...pub(prof) });
+  }
+  if (p.a === "members") {
+    const list = (await getMany("m:")).filter((x) => !MEMBERS_HIDE.includes(x.nick));
+    return out({ ok: true, list });
+  }
+  if (p.a === "pending" || p.a === "all") {
+    if (!isAdmin(p.key)) {
+      return out({ ok: false, err: "key" });
+    }
+    const list = (await getMany("p:")).filter((x) => p.a === "all" || !x.resultFor || String(x.resultFor) !== String(x.updatedAt)).map(pub);
+    return out({ ok: true, list });
+  }
+  return out({ ok: true, service: "dosa" });
+}
+
+async function handlePost(b) {
+  if (b.a === "save") {
+    const nick = cleanNick(b.nick);
+    const pin = String(b.pin || "");
+    if (!nick || !/^\d{4}$/.test(pin)) {
+      return out({ ok: false, err: "input" });
+    }
+    const data = b.data || {};
+    if (JSON.stringify(data).length > MAX_DATA) {
+      return out({ ok: false, err: "size" });
+    }
+    let prof = await db().get("p:" + nick);
+    let created = false;
+    if (!prof) {
+      if (b.create !== true) {
+        return out({ ok: false, err: "none" });
+      }
+      prof = { nick, pinHash: hash(nick, pin), result: null, resultFor: "", resultAt: "" };
+      created = true;
+    } else if (prof.pinHash !== hash(nick, pin)) {
+      return out({ ok: false, err: "pin" });
+    }
+    const now = String(Date.now());
+    prof.data = data;
+    prof.updatedAt = now;
+    await putProfile(prof);
+    let run = "none";
+    try {
+      run = await dispatch();
+    } catch (e) {
+      run = "error";
+    }
+    return out({ ok: true, updatedAt: now, created, run });
+  }
+  if (b.a === "result") {
+    if (!isAdmin(b.key)) {
+      return out({ ok: false, err: "key" });
+    }
+    const nick = cleanNick(b.nick);
+    const prof = await db().get("p:" + nick);
+    if (!prof) {
+      return out({ ok: false, err: "none" });
+    }
+    prof.result = b.result || null;
+    prof.resultFor = String(b.updatedAt || "");
+    prof.resultAt = String(Date.now());
+    await db().set("p:" + nick, prof);
+    return out({ ok: true });
+  }
+  if (b.a === "import") {
+    if (!isAdmin(b.key)) {
+      return out({ ok: false, err: "key" });
+    }
+    const done = [];
+    for (const x of b.profiles || []) {
+      const nick = cleanNick(x.nick);
+      if (!nick) {
+        continue;
+      }
+      await putProfile({
+        nick, pinHash: x.pinHash || hash(nick, "0000"), data: x.data || {}, updatedAt: String(x.updatedAt || ""),
+        result: x.result || null, resultFor: String(x.resultFor || ""), resultAt: String(x.resultAt || ""),
+      });
+      done.push(nick);
+    }
+    return out({ ok: true, done });
+  }
+  return out({ ok: false, err: "action" });
+}
+
+function fail(e) {
+  return out({ ok: false, err: "server", msg: String((e && e.message) || e).slice(0, 200) });
+}
+
+export function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS });
+}
+
+export async function GET(request) {
+  try {
+    return await handleGet(Object.fromEntries(new URL(request.url).searchParams));
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function POST(request) {
+  let b = {};
+  try {
+    b = JSON.parse(await request.text());
+  } catch (e) {
+    return out({ ok: false, err: "json" });
+  }
+  try {
+    return await handlePost(b);
+  } catch (e) {
+    return fail(e);
+  }
+}
