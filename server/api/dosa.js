@@ -3,6 +3,7 @@
 //   GET  ?a=members                길드원 현황(닉네임·강화 레벨·각성만)
 //   GET  ?a=status&nick=           추천 트리 계산 상태(저장 시각·결과 시각·진행률)
 //   POST {a:"progress", key, nick, updatedAt, pct, stage}  분석 진행률 보고(관리자)
+//   GET  ?a=data&name=&key=  /  POST {a:"setdata", key, name, value}   계산용 비공개 게임 데이터(관리자)
 //   GET  ?a=pending|all&key=       분석할 프로필(관리자)
 //   POST {a:"save", nick, pin, data, create}
 //   POST {a:"result", key, nick, updatedAt, result}   분석 결과 기록(관리자)
@@ -130,6 +131,13 @@ async function handleGet(p) {
     const list = (await getMany("m:")).filter((x) => !MEMBERS_HIDE.includes(x.nick));
     return out({ ok: true, list });
   }
+  if (p.a === "data") {
+    if (!isAdmin(p.key)) {
+      return out({ ok: false, err: "key" });
+    }
+    const value = await db().get("d:" + String(p.name || ""));
+    return out(value === null ? { ok: false, err: "none" } : { ok: true, value });
+  }
   if (p.a === "pending" || p.a === "all") {
     if (!isAdmin(p.key)) {
       return out({ ok: false, err: "key" });
@@ -200,6 +208,13 @@ async function handlePost(b) {
     // 계산이 실제로 시작된 시각(pct>0 첫 보고)을 남겨 남은 시간을 추정한다
     const start = prev.for === forNow && prev.start ? prev.start : (pct > 0 ? Date.now() : 0);
     await db().set("g:" + nick, { for: forNow, pct, stage: String(b.stage || ""), at: Date.now(), start }, { ex: 3600 });
+    return out({ ok: true });
+  }
+  if (b.a === "setdata") {
+    if (!isAdmin(b.key)) {
+      return out({ ok: false, err: "key" });
+    }
+    await db().set("d:" + String(b.name || ""), b.value);
     return out({ ok: true });
   }
   if (b.a === "import") {

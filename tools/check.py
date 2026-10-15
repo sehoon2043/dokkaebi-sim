@@ -11,6 +11,7 @@ import explain as EX
 import field as F
 import mob as M
 import verify as VF
+import gamedata
 
 S = F.S
 FAIL = []
@@ -23,7 +24,7 @@ def ok(cond, msg):
 
 
 def load(name):
-    return json.load(open(os.path.join(ROOT, "data", name), encoding="utf-8"))
+    return gamedata.load(name)   # 비공개 데이터는 저장 서버에서 받아 옴
 
 
 D = load("skills.json")
@@ -78,11 +79,11 @@ def name_checks():
             ok(n in NAMES and STYLE_OF.get(n) == st, f"{where}: '{key}' 스타일/이름 불일치")
 
     names("몰이 효과(mob.EFF)", M.EFF)
-    names("연계 조건(jmodel.COND)", S.COND)
-    names("효과 부여(jmodel.APPLY)", S.APPLY)
-    names("받는 피해(jmodel.VULN)", S.VULN)
-    names("원소(jmodel.SELF_ELEM)", S.SELF_ELEM)
-    names("방어력 감소(jmodel.ARMOR_SRC)", S.ARMOR_SRC)
+    names("연계 조건(timeline.COND)", S.COND)
+    names("효과 부여(timeline.APPLY)", S.APPLY)
+    names("받는 피해(timeline.VULN)", S.VULN)
+    names("원소(timeline.SELF_ELEM)", S.SELF_ELEM)
+    names("방어력 감소(timeline.ARMOR_SRC)", S.ARMOR_SRC)
     names("힐", F.HEALS | M.HEALS)
     names("공간 결계", [M.GATHER])
     names("연타 광역(analyze.YT_AOE)", A.YT_AOE)

@@ -1,7 +1,8 @@
 # 추천 트리 자동 설명: 사용 순서 흐름, 도술 연계, 신식 활용
 import json, os
 
-_D = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "skills.json"), encoding="utf-8"))
+import gamedata
+_D = gamedata.load("skills.json")
 STYLE_AW = {s["n"]: s.get("aw", "") for s in _D["styles"]}
 STYLE_OF = {k["n"]: _D["styles"][k["st"]]["n"] for k in _D["skills"]}
 ULT_STYLE = {k["n"]: _D["styles"][k["st"]]["n"] for k in _D["skills"] if k["u"]}

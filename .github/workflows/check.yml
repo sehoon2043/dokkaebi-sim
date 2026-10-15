@@ -19,3 +19,6 @@ jobs:
           python-version: "3.12"
       - name: 계산 전체 점검 (작은 프로필 분석까지)
         run: python tools/check.py
+        env:
+          DOSA_URL: ${{ secrets.DOSA_URL }}
+          DOSA_KEY: ${{ secrets.DOSA_KEY }}

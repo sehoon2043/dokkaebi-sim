@@ -1,21 +1,15 @@
-# 필드 사냥 처치 속도 모델 + 보스 DPS 모델 (jmodel 기반)
+# 필드 사냥 처치 속도 모델 + 보스 DPS 모델 (시전 시간표는 timeline.py)
 # 처치 속도: 피해 이벤트를 몹 체력 H씩 순서대로 적용(남는 피해 버림), 처치마다 이동 시간 추가
-import inspect, json, os, random
+import json, os, random
 import copy
-import jmodel as S
+import timeline as S
 import transcend as TR
 
 TGT = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "targets.json"), encoding="utf-8"))
 
 S.FORMS_STYLE_ONLY, S.FORMS_PER_CAST, S.STRICT_MAX = False, True, True
 AMP0 = dict(S.AMP_HIT)
-EV = []
-_src = inspect.getsource(S.run).replace("def run(", "def run_ev(", 1)
-_src = _src.replace('        tot += pick["damage"] * mult * vm\n', '        tot += pick["damage"] * mult * vm; EV.append((now, pick["damage"] * mult * vm))\n')
-_src = _src.replace('                tot += BASIC * k\n', '                tot += BASIC * k; EV.append((now, BASIC * k))\n')
-_src = _src.replace('gain = 1 if FORMS_PER_CAST else pick["hits"]', 'gain = (1 if FORMS_PER_CAST else pick["hits"]) if pick["damage"] > 0 else 0')
-exec(_src, S.__dict__)
-S.__dict__["EV"] = EV
+EV = S.EV
 
 OH = 0.3        # 필드: 도술 사이 딜레이(실측 없음, 대상 찾기·이동 포함 가정)
 HEALS = {"생명의 축복", "생명의 흐름"}

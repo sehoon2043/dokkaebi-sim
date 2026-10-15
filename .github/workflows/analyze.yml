@@ -17,6 +17,9 @@ jobs:
           python-version: "3.12"
       - name: 계산 빠른 점검 (실패하면 분석하지 않음, 전체 점검은 check.yml이 push 때 실행)
         run: python tools/check.py --quick
+        env:
+          DOSA_URL: ${{ secrets.DOSA_URL }}
+          DOSA_KEY: ${{ secrets.DOSA_KEY }}
       - name: 대기 중인 프로필 분석
         run: python analyze.py
         env:

@@ -536,7 +536,8 @@ def run_list(todo, url, key, done):
         PROG[0] = None
         w = call(url, body={"a": "result", "key": key, "nick": p["nick"], "updatedAt": p["updatedAt"], "result": res})
         done[p["nick"]] = str(p["updatedAt"])
-        print(p["nick"], len(res["trees"]), "트리", f"{time.time() - t0:.0f}초", w.get("ok"))
+        # 저장소가 공개라 실행 기록에는 닉네임을 남기지 않는다
+        print(f"{len(done)}번째 프로필", len(res["trees"]), "트리", f"{time.time() - t0:.0f}초", w.get("ok"))
 
 
 if __name__ == "__main__":
