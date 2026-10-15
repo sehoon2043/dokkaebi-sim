@@ -125,6 +125,8 @@ def model_checks():
     if not (ok(bs, "보스 탐색 결과 없음") and ok(rng, "필드 탐색 결과 없음") and ok(mob, "몰이 탐색 결과 없음")):
         return
     _, bc, bo = bs[0]
+    # 파멸 궁극기 트리는 요기(쿨 초기화) 주기 때문에 쿨이 줄면 점수가 줄 수 있어서(실제 자동 사냥도 같음) 단조성 점검에서 뺀다
+    rng = [r for r in rng if "대폭발" not in r[2]] or rng
     _, rc, ro = rng[0]
     mo = mob[1]
     fs = {"보스": lambda: F.boss_score(bc, bo), "필드": lambda: F.kills(rc, ro, 0.3), "몰이": lambda: M.w(mo)}

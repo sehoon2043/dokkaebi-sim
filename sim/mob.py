@@ -53,6 +53,10 @@ def setup(levels, steps=None):
 
 def sim(order, n, T=300, cast="flat", Kc=8, dot_rage=True):
     mode = "연타" if sum(K[k]["style"] == "연타" for k in order if k in K) >= 3 else "파멸"
+    # 기동 신식: 도술마다 영력 15, 200이 되면 연속 쇄도 쿨 초기화 + 10초 [연쇄](궁극기 피해 1.5배 가정). 귀보(회피)는 자동 사냥이 안 쓰므로 뺌
+    if "연속 쇄도" in order and sum(K[k]["style"] == "기동" for k in order if k in K and k != "연속 쇄도") >= 3:
+        mode = "기동"
+    dash = 0; chain = -1
     cd = {k: 0.0 for k in order}; t = 0.0; tot = 0.0; idle = 0.0; u = {}; g = 0; yogi = -1
     rage = 0; last_hit = -99.0
     tg = lambda k: range(min(n, 5)) if k in AOE else [0]
@@ -82,7 +86,7 @@ def sim(order, n, T=300, cast="flat", Kc=8, dot_rage=True):
             else:
                 s = K[k]; e = EFF.get(k, {}); dt = ct(s["mot"]); h = t + dt
                 for i in tg(k):
-                    d = s["dmg"]
+                    d = s["dmg"] * (1.5 if k == "연속 쇄도" and t < chain else 1.0)
                     if e.get("eb") and u.get("원소", -1) > t: d *= 1 + e["eb"]
                     if e.get("bc") and u.get(("한기", i), -1) > t: d *= 1 + e["bc"]
                     m = 1 + 0.05 * (u.get(("파쇄", i), -1) > t) + 0.05 * (u.get(("파열", i), -1) > t) + 0.05 * (u.get(("결계", i), -1) > t) + ARMOR * ((u.get(("방깎", i), -1) > t) + (u.get(("방깎2", i), -1) > t))
@@ -100,6 +104,10 @@ def sim(order, n, T=300, cast="flat", Kc=8, dot_rage=True):
                 if "elem" in e: u["원소"] = h + DE
                 cd[k] = t + s["cd"]
                 gain(s.get("hits", 1) * len(list(tg(k))))
+                if mode == "기동":
+                    dash += 15
+                    if dash >= 200:
+                        dash = 0; chain = h + 10; cd["연속 쇄도"] = h
                 if mode == "파멸" and s["style"] == "파멸" and not h < yogi:
                     g += 1
                     if g >= Kc:
