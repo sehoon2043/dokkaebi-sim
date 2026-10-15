@@ -184,7 +184,7 @@ function watch(c, upd, t0){
       const left = g.start ? (now - g.start) / g.pct * (100 - g.pct) : 0;
       anaShow(g.pct, "추천 트리 계산 중 · " + g.stage, left ? fmtLeft(left) : "남은 시간 계산 중…");
     } else if (g && String(g.for) === String(upd)) {
-      anaShow(0, "추천 트리 계산 대기 중", g.stage + " · 다른 길드원 계산이 끝나면 바로 시작해요");
+      anaShow(0, "추천 트리 계산 준비 중", "계산 서버를 준비하는 중이에요(보통 30초~1분)");
     } else if (waited > 20 * 60 * 1000) {
       anaShow(0, "계산이 늦어지고 있어요", "잠시 뒤 '불러오기'를 눌러 보세요. 계속 안 되면 관리자에게 알려 주세요", true);
       return;

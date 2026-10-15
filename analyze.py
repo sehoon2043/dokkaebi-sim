@@ -550,6 +550,24 @@ def main():
         return
     url = os.environ["DOSA_URL"]
     key = os.environ["DOSA_KEY"]
+    # GitHub Actions: --plan 으로 대기 프로필 목록(닉네임 대신 짧은 해시)을 만들고, --one 해시 로 프로필마다 따로(동시에) 계산
+    if len(sys.argv) > 1 and sys.argv[1] == "--plan":
+        r = call(url, {"a": "pending", "key": key})
+        if not r.get("ok"):
+            print("pending 실패", r.get("err"), file=sys.stderr)
+            sys.exit(1)
+        for i, x in enumerate(r["list"]):
+            reporter(url, key, x)(0, "곧 시작")
+        print("ids=" + json.dumps([tag(x["nick"]) for x in r["list"]]))
+        return
+    if len(sys.argv) > 2 and sys.argv[1] == "--one":
+        r = call(url, {"a": "pending", "key": key})
+        todo = [x for x in r.get("list", []) if tag(x["nick"]) == sys.argv[2]]
+        print("대기", len(todo), "· 병렬", WORKERS)
+        if todo:
+            BUILDS[:] = load_builds()
+            run_list(todo, url, key, {})
+        return
     BUILDS[:] = load_builds()
     print("커뮤니티 덱", len(BUILDS), "· 병렬", WORKERS)
     done = {}
@@ -565,6 +583,12 @@ def main():
         run_list(todo, url, key, done)
 
 
+def tag(nick):
+    """실행 기록(공개)에 닉네임 대신 남기는 짧은 해시"""
+    import hashlib
+    return hashlib.sha1(nick.encode("utf-8")).hexdigest()[:10]
+
+
 def reporter(url, key, p):
     """진행률을 서버에 보고. 같은 단계에서 3% 미만 변화는 건너뜀"""
     last = {"pct": -100, "stage": None}
@@ -576,7 +600,7 @@ def reporter(url, key, p):
         try:
             call(url, body={"a": "progress", "key": key, "nick": p["nick"], "updatedAt": p["updatedAt"], "pct": int(pct), "stage": stage})
         except Exception as e:
-            print("진행률 보고 실패", type(e).__name__)
+            print("진행률 보고 실패", type(e).__name__, file=sys.stderr)
     return f
 
 
