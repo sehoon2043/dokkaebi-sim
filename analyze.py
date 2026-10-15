@@ -185,10 +185,12 @@ def suggest(kind, order, ult, owned, tr=0.3):
     else:
         val = lambda n: F.S.total(F.S.BY[n]) / F.S.BY[n]["num"]["cd"]
         pool = [n for n in _all_damage_skills() if n not in owned]
+        # 칸은 arrange로 놓아야 하단 5칸에 궁극기 스타일 3개가 들어가 궁극기가 계산에 들어간다
+        lay = (lambda o: arrange(o, ult)) if ust else (lambda o: [x for x in o if x != ult])
         if kind == "boss":
-            q = lambda o: F._boss_quick([x for x in o if x != ult])
+            q = lambda o: F.boss_score(lay(o), o)
         else:
-            q = lambda o: F.kills([x for x in o if x != ult], o, tr, Ps=F.HUNT_P[:1], syn=(False,))
+            q = lambda o: F.kills(lay(o), o, tr, Ps=F.HUNT_P[:1], syn=(False,))
     pool = sorted(pool, key=lambda n: -val(n))[:12]
     base = q(order)
     if not base:
