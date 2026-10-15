@@ -29,6 +29,8 @@ rep('  <div class="cols">',
     '<button type="button" id="pnClose" aria-label="닫기">닫기</button></div><div id="pnBody">불러오는 중…</div></dialog>\n'
     '  <dialog id="cmDlg" class="pn-dlg" aria-labelledby="cmTitle"><div class="pn-head"><h2 id="cmTitle">커뮤니티 소식</h2>'
     '<button type="button" id="cmClose" aria-label="닫기">닫기</button></div><div id="cmBody">불러오는 중…</div></dialog>\n'
+    '  <div id="anaBox" class="ana" hidden role="status" aria-live="polite"><div class="ana-top"><b id="anaTitle">추천 트리 계산 중</b><span id="anaPct">0%</span></div>'
+    '<div class="ana-bar"><i id="anaFill"></i></div><div class="ana-sub" id="anaSub"></div></div>\n'
     '  <dialog id="gmDlg" class="pn-dlg" aria-labelledby="gmTitle"><div class="pn-head"><h2 id="gmTitle">길드원 현황</h2>'
     '<button type="button" id="gmClose" aria-label="닫기">닫기</button></div><div id="gmBody">불러오는 중…</div></dialog>\n\n  <div class="cols">')
 rep('.bar .status{',
@@ -41,6 +43,10 @@ rep('.bar .status{',
     '.gm-tbl td.nk,.gm-tbl th.nk{text-align:left;position:sticky;left:0;background:var(--panel)}.gm-tbl td.nk{font-weight:600}\n'
     '.gm-tbl td.z{color:var(--muted)}.gm-tbl td.top{font-weight:700;color:var(--accent)}.gm-tbl td.main{font-size:.78rem;color:var(--muted)}\n'
     '.gm-tbl tr.me td{background:var(--accent-soft)}.gm-tbl tfoot td{color:var(--muted);font-size:.8rem;border-bottom:0}\n'
+    '.ana{margin:0 0 12px;padding:10px 14px;border:1px solid var(--accent);border-radius:10px;background:var(--accent-soft)}.ana.warn{border-color:var(--warn)}\n'
+    '.ana-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.ana-top b{font-size:.95rem}.ana-top span{font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}\n'
+    '.ana-bar{height:8px;margin:7px 0 5px;border-radius:5px;background:var(--line);overflow:hidden}.ana-bar i{display:block;height:100%;width:2%;background:var(--accent);border-radius:5px;transition:width .6s ease}\n'
+    '.ana.warn .ana-bar i{background:var(--warn)}.ana-sub{font-size:.82rem;color:var(--muted)}\n'
     '.rec-legend{font-size:.78rem;color:var(--muted);margin:2px 0 0}.rec-verify summary{cursor:pointer;font-size:.82rem;color:var(--muted)}\n'
     '.cm-hl{margin:0 0 8px;font-weight:600}.cm-sec{margin-top:8px}.cm-sec h4{margin:0 0 4px;font-size:.9rem;color:var(--accent)}\n'
     '.cm-top{margin:12px 0 4px;padding:10px 12px;border-radius:8px;background:var(--accent-soft);font-weight:600;line-height:1.45}\n'
@@ -108,7 +114,8 @@ async function load(c){
     // 서버 응답이 느릴 때가 있어 마지막으로 받은 내용을 이 브라우저에 보관(다음에 열면 먼저 보여 줌)
     saveDraft(); try { localStorage.setItem(LSR, JSON.stringify({nick: c.nick, res: r.result || null})); } catch (e) {}
     const pending = !r.result || String(r.resultFor) !== String(r.updatedAt);
-    setStatus(c.nick + " 불러옴" + (pending ? " · 마지막 저장 내용을 분석하는 중이에요(2~3분)" : " · 추천 트리가 최신이에요"), "ok");
+    setStatus(c.nick + " 불러옴" + (pending ? " · 추천 트리 계산 중" : " · 추천 트리가 최신이에요"), "ok");
+    if (pending) watch(c, r.updatedAt, Number(r.updatedAt) || Date.now()); else anaHide();
   } catch (e) { setStatus("서버에 연결하지 못했어요. 잠시 뒤 다시 시도하세요", "warn"); }
 }
 async function save(){
@@ -123,26 +130,58 @@ async function save(){
       setStatus(ERR[r.err] || "저장 실패", "warn");
     } else {
       remember(c); dirty = false; saveDraft();
-      setStatus((r.created ? "등록 완료" : "저장됨") + " · 2~3분 뒤 추천 트리가 갱신돼요", "ok");
-      poll(c, r.updatedAt, 0);
+      setStatus((r.created ? "등록 완료" : "저장됨") + " · 추천 트리 계산을 시작해요", "ok");
+      watch(c, r.updatedAt, Date.now());
     }
   } catch (e) { setStatus("서버에 연결하지 못했어요. 잠시 뒤 다시 저장하세요", "warn"); }
   saving = false;
 }
-let pollT = null;
-function poll(c, upd, n){
-  clearTimeout(pollT);
-  if (n >= 16) { setStatus("분석이 늦어지고 있어요. 조금 뒤 '불러오기'를 눌러 보세요", "warn"); return; }
-  pollT = setTimeout(async () => {
-    try {
-      const r = await api({a: "load", nick: c.nick, pin: c.pin});
-      if (r.ok && String(r.resultFor) === String(upd)) {
-        applyResult(r.result); rightTab = "recs"; renderRight();
-        setStatus("추천 트리가 갱신됐어요", "ok"); return;
-      }
-    } catch (e) {}
-    poll(c, upd, n + 1);
-  }, 20000);
+// 추천 트리 계산 진행률: 저장 뒤 4초마다 서버 상태(status)를 받아 막대·단계·남은 시간을 보여 준다
+let watchT = null, watchSeq = 0;
+function anaHide(){ clearTimeout(watchT); watchSeq++; $("anaBox").hidden = true; }
+function fmtLeft(ms){
+  const s = Math.max(10, Math.round(ms / 10000) * 10);
+  return s >= 60 ? "약 " + Math.floor(s / 60) + "분" + (s % 60 ? " " + (s % 60) + "초" : "") + " 남음" : "약 " + s + "초 남음";
+}
+function anaShow(pct, title, sub, warn){
+  $("anaBox").hidden = false; $("anaBox").classList.toggle("warn", !!warn);
+  $("anaTitle").textContent = title; $("anaPct").textContent = Math.round(pct) + "%";
+  $("anaFill").style.width = Math.max(2, Math.min(100, pct)) + "%"; $("anaSub").textContent = sub;
+}
+function watch(c, upd, t0){
+  clearTimeout(watchT); const seq = ++watchSeq;
+  anaShow(0, "추천 트리 계산 준비 중", "계산 서버를 깨우는 중이에요(보통 30초~1분)");
+  const tick = async () => {
+    if (seq !== watchSeq) return;
+    let r = null;
+    try { r = await api({a: "status", nick: c.nick}); } catch (e) {}
+    if (seq !== watchSeq) return;
+    if (r && r.ok && String(r.resultFor) === String(upd)) {
+      anaShow(100, "추천 트리 계산 완료", "결과를 불러오는 중…");
+      try {
+        const x = await api({a: "load", nick: c.nick, pin: c.pin});
+        if (x.ok) { applyResult(x.result); try { localStorage.setItem(LSR, JSON.stringify({nick: c.nick, res: x.result || null})); } catch (e) {} }
+      } catch (e) {}
+      rightTab = "recs"; renderRight(); setStatus("추천 트리가 갱신됐어요", "ok");
+      watchT = setTimeout(anaHide, 2500); return;
+    }
+    if (r && r.ok && String(r.updatedAt) !== String(upd)) { watch(c, r.updatedAt, Number(r.updatedAt) || Date.now()); return; }
+    const now = (r && r.now) || Date.now(), g = r && r.progress;
+    const waited = now - t0;
+    if (g && String(g.for) === String(upd) && g.pct > 0) {
+      const left = g.start ? (now - g.start) / g.pct * (100 - g.pct) : 0;
+      anaShow(g.pct, "추천 트리 계산 중 · " + g.stage, left ? fmtLeft(left) : "남은 시간 계산 중…");
+    } else if (g && String(g.for) === String(upd)) {
+      anaShow(0, "추천 트리 계산 대기 중", g.stage + " · 다른 길드원 계산이 끝나면 바로 시작해요");
+    } else if (waited > 20 * 60 * 1000) {
+      anaShow(0, "계산이 늦어지고 있어요", "잠시 뒤 '불러오기'를 눌러 보세요. 계속 안 되면 관리자에게 알려 주세요", true);
+      return;
+    } else {
+      anaShow(0, "추천 트리 계산 준비 중", "계산 서버를 깨우는 중이에요(보통 30초~1분) · " + Math.round(waited / 1000) + "초 지남");
+    }
+    watchT = setTimeout(tick, 4000);
+  };
+  watchT = setTimeout(tick, 2000);
 }
 $("loadBtn").addEventListener("click", () => { const c = cred(); if (c) load(c); });
 $("nick").addEventListener("keydown", e => { if (e.key === "Enter") { const c = cred(); if (c) load(c); } });

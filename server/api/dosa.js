@@ -1,12 +1,14 @@
 // 도사 수첩 저장 서버 (Vercel Functions + Upstash Redis). 예전 Apps Script(Code.gs)와 같은 요청·응답 형식
 //   GET  ?a=load&nick=&pin=        내 수첩 + 분석 결과
 //   GET  ?a=members                길드원 현황(닉네임·강화 레벨·각성만)
+//   GET  ?a=status&nick=           추천 트리 계산 상태(저장 시각·결과 시각·진행률)
+//   POST {a:"progress", key, nick, updatedAt, pct, stage}  분석 진행률 보고(관리자)
 //   GET  ?a=pending|all&key=       분석할 프로필(관리자)
 //   POST {a:"save", nick, pin, data, create}
 //   POST {a:"result", key, nick, updatedAt, result}   분석 결과 기록(관리자)
 //   POST {a:"import", key, profiles:[...]}            옮겨 오기(관리자)
 // 환경 변수: ADMIN_KEY, GH_TOKEN(저장 직후 GitHub Actions 분석 요청), Upstash 연결 값(KV_REST_API_URL·KV_REST_API_TOKEN 또는 UPSTASH_REDIS_REST_URL·TOKEN)
-// Redis 키: p:<닉네임> 프로필 전체, m:<닉네임> 길드원 현황 요약, nicks 닉네임 목록, lastDispatch
+// Redis 키: p:<닉네임> 프로필 전체, m:<닉네임> 길드원 현황 요약, g:<닉네임> 분석 진행률(1시간 뒤 삭제), nicks 닉네임 목록, lastDispatch
 import { Redis } from "@upstash/redis";
 import { createHash } from "node:crypto";
 
@@ -114,7 +116,15 @@ async function handleGet(p) {
     if (prof.pinHash !== hash(nick, String(p.pin || ""))) {
       return out({ ok: false, err: "pin" });
     }
-    return out({ ok: true, ...pub(prof) });
+    return out({ ok: true, ...pub(prof), progress: await db().get("g:" + nick), now: Date.now() });
+  }
+  if (p.a === "status") {
+    const nick = cleanNick(p.nick);
+    const [prof, g] = nick ? await Promise.all([db().get("p:" + nick), db().get("g:" + nick)]) : [null, null];
+    if (!prof) {
+      return out({ ok: false, err: "none" });
+    }
+    return out({ ok: true, updatedAt: prof.updatedAt, resultFor: prof.resultFor, resultAt: prof.resultAt, progress: g, now: Date.now() });
   }
   if (p.a === "members") {
     const list = (await getMany("m:")).filter((x) => !MEMBERS_HIDE.includes(x.nick));
@@ -177,6 +187,19 @@ async function handlePost(b) {
     prof.resultFor = String(b.updatedAt || "");
     prof.resultAt = String(Date.now());
     await db().set("p:" + nick, prof);
+    return out({ ok: true });
+  }
+  if (b.a === "progress") {
+    if (!isAdmin(b.key)) {
+      return out({ ok: false, err: "key" });
+    }
+    const nick = cleanNick(b.nick);
+    const prev = (await db().get("g:" + nick)) || {};
+    const forNow = String(b.updatedAt || "");
+    const pct = Math.max(0, Math.min(100, Number(b.pct) || 0));
+    // 계산이 실제로 시작된 시각(pct>0 첫 보고)을 남겨 남은 시간을 추정한다
+    const start = prev.for === forNow && prev.start ? prev.start : (pct > 0 ? Date.now() : 0);
+    await db().set("g:" + nick, { for: forNow, pct, stage: String(b.stage || ""), at: Date.now(), start }, { ex: 3600 });
     return out({ ok: true });
   }
   if (b.a === "import") {

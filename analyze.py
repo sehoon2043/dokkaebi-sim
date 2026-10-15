@@ -1,7 +1,8 @@
-# 도사 수첩 자동 분석: 구글 시트(Apps Script)에서 새로 저장된 프로필을 받아 추천 트리를 계산해 돌려준다
+# 도사 수첩 자동 분석: 저장 서버(Vercel)에서 새로 저장된 프로필을 받아 추천 트리를 계산해 돌려준다(진행률도 서버에 보고)
 #   python analyze.py                 → DOSA_URL·DOSA_KEY 환경변수로 대기 중인 프로필 전부 처리
 #   python analyze.py --local p.json  → 로컬 프로필 파일 하나 계산해서 결과 출력(테스트용)
 import json, os, sys, time, random, urllib.request, urllib.parse
+from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "sim"))
 import field as F
@@ -12,6 +13,13 @@ import verify as VF
 
 TODAY = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 9 * 3600))
 STYLE_ORDER = ["절명", "연타", "강타", "척살", "저격", "주술", "파멸", "강인", "기동", "헌신", "기만", "제압"]
+WORKERS = max(1, min(8, os.cpu_count() or 1))
+PROG = [None]   # 진행률 보고 함수 (pct, 단계 이름)
+
+
+def progress(pct, stage):
+    if PROG[0]:
+        PROG[0](pct, stage)
 
 
 def arrange(order, ult):
@@ -229,22 +237,47 @@ def top(tid, rs, owned, kind, tr=None):
     return b, c, o, u
 
 
-def verify_all(trees, owned):
-    """트리마다 검증(한 칸 바꾼 조합 비교 + 가정 흔들기) 결과를 붙인다"""
+def _setup(levels, steps, ref):
+    F.set_levels(levels)
+    F.set_steps(steps)
+    M.setup(levels, steps)
+    F.REF[0] = ref
+
+
+def _verify_one(t, owned, parent):
+    try:
+        return VF.check(t, owned, arrange, parent)
+    except Exception as e:
+        print("검증 실패", t["id"], type(e).__name__, e)
+        return None
+
+
+def verify_all(trees, owned, ctx, p0=55, p1=97):
+    """트리마다 검증(한 칸 바꾼 조합 비교 + 가정 흔들기) 결과를 붙인다. 트리끼리 독립이라 여러 프로세스로 나눠 계산"""
     by = {t["id"]: t for t in trees}
+    jobs = []
     for t in trees:
         parent = None
         if t["id"] == "mobheal" and "mob" in by:
             parent = by["mob"]["order"]
         elif t["id"] == "mobheal2" and "mobheal" in by:
             parent = by["mobheal"]["order"]
-        try:
-            v = VF.check(t, owned, arrange, parent)
-        except Exception as e:
-            print("검증 실패", t["id"], type(e).__name__, e)
-            v = None
-        if v:
-            t["verify"] = v
+        jobs.append((t, parent))
+    n = len(jobs)
+    if WORKERS > 1 and n > 1:
+        with ProcessPoolExecutor(WORKERS, initializer=_setup, initargs=ctx) as ex:
+            futs = {ex.submit(_verify_one, t, owned, parent): t for t, parent in jobs}
+            for i, f in enumerate(as_completed(futs), 1):
+                v = f.result()
+                if v:
+                    futs[f]["verify"] = v
+                progress(p0 + (p1 - p0) * i / n, "추천 트리 검증")
+    else:
+        for i, (t, parent) in enumerate(jobs, 1):
+            v = _verify_one(t, owned, parent)
+            if v:
+                t["verify"] = v
+            progress(p0 + (p1 - p0) * i / n, "추천 트리 검증")
 
 
 # ---------- 결과 조립 ----------
@@ -275,6 +308,7 @@ def analyze(data):
     M.setup(levels, steps)
     trees = []
     notes = []
+    progress(2, "몰이 트리")
     # 몰이 0/1/2힐
     ref = {"mob": None, "field": None, "boss": None}
     for h, tid, tab in ((0, "mob", "몰이"), (1, "mobheal", "몰이+힐"), (2, "mobheal2", "몰이+2힐")):
@@ -308,6 +342,7 @@ def analyze(data):
                 pts.append("공간 결계는 몹을 모아 줘서 넣었습니다(엽전 비경 실측 약 +6.5%).")
         trees.append(tree(tid, tab, f"힐 {h}개 · 궁극기 {ult}" if h else f"힐 없음 · 궁극기 {ult}", o, ult,
                           "몹 5마리가 뭉쳐 있는 조건" + (" · 공간 결계로 몹이 더 잘 모임(실측 보정)" if M.gathered(o) else ""), pts))
+    progress(5, "필드 사냥 트리")
     # 필드 사냥: 몹 체력 기준(REF)은 이 사람의 평범(원거리) 트리 초당 피해
     F.REF[0] = 290.0
     rng = F.search(owned, "ranged", False, seeds=4)
@@ -369,6 +404,7 @@ def analyze(data):
         if not heal:
             trees[-1]["_v"] = b0
     ref["field"] = base
+    progress(40, "보스 트리")
     bs = F.boss_search(owned, seeds=5)
     boss_b = None
     if bs:
@@ -417,7 +453,9 @@ def analyze(data):
         if sg:
             t["points"] = t["points"] + sg[:1]
     mark_best(trees)
-    verify_all(trees, owned)
+    progress(55, "추천 트리 검증")
+    verify_all(trees, owned, (levels, steps, F.REF[0]))
+    progress(97, "커뮤니티 덱 비교")
     # 커뮤니티 덱(깨비지지 유저 덱, 인기순) — 이 사람 강화·각성 기준 점수와 내 추천 대비
     for bd in BUILDS:
         try:
@@ -451,7 +489,7 @@ def main():
     url = os.environ["DOSA_URL"]
     key = os.environ["DOSA_KEY"]
     BUILDS[:] = load_builds()
-    print("커뮤니티 덱", len(BUILDS))
+    print("커뮤니티 덱", len(BUILDS), "· 병렬", WORKERS)
     done = {}
     for rnd in range(6):   # 분석 중에 새로 저장된 것도 이어서 처리
         r = call(url, {"a": "pending", "key": key})
@@ -465,13 +503,32 @@ def main():
         run_list(todo, url, key, done)
 
 
+def reporter(url, key, p):
+    """진행률을 서버에 보고. 같은 단계에서 3% 미만 변화는 건너뜀"""
+    last = {"pct": -100, "stage": None}
+
+    def f(pct, stage):
+        if stage == last["stage"] and pct - last["pct"] < 3 and pct < 100:
+            return
+        last.update(pct=pct, stage=stage)
+        try:
+            call(url, body={"a": "progress", "key": key, "nick": p["nick"], "updatedAt": p["updatedAt"], "pct": int(pct), "stage": stage})
+        except Exception as e:
+            print("진행률 보고 실패", type(e).__name__)
+    return f
+
+
 def run_list(todo, url, key, done):
+    for i, p in enumerate(todo):
+        reporter(url, key, p)(0, f"대기 중 · 앞에 {i}명" if i else "곧 시작")
     for p in todo:
         t0 = time.time()
+        PROG[0] = reporter(url, key, p)
         try:
             res = analyze(p.get("data") or {})
         except Exception as e:
             res = {"updated": TODAY, "basis": "", "trees": [], "notes": [f"계산 오류: {type(e).__name__}"]}
+        PROG[0] = None
         w = call(url, body={"a": "result", "key": key, "nick": p["nick"], "updatedAt": p["updatedAt"], "result": res})
         done[p["nick"]] = str(p["updatedAt"])
         print(p["nick"], len(res["trees"]), "트리", f"{time.time() - t0:.0f}초", w.get("ok"))
