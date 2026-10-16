@@ -319,7 +319,7 @@ function gmState(m){
   if (String(m.resultFor || "") === upd && upd) {
     if (!m.resultOk) return cel("td", "st bad", "오류");
     const t = new Date(Number(m.resultAt));
-    return cel("td", "st ok", "완료" + (isNaN(t) ? "" : " " + String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0")));
+    return cel("td", "st ok", "완료" + (isNaN(t) ? "" : " " + (t.getMonth() + 1) + "/" + t.getDate() + " " + String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0")));
   }
   if (g && String(g.for) === upd && g.pct > 0) return cel("td", "st run", "계산 중 " + Math.round(g.pct) + "%");
   return cel("td", "st run", "준비 중");
@@ -334,7 +334,7 @@ function gmRender(){
   if (!L.length) { box.textContent = "아직 강화 레벨을 저장한 길드원이 없어요."; return; }
   const cols = GM_ST.filter(s => L.some(m => lv(m, s) > 0));
   const mx = {}; for (const s of cols) mx[s] = Math.max(...L.map(m => lv(m, s)));
-  box.appendChild(cel("p", "cm-meta", "길드원 " + L.length + "명 · 가나다 순 · 열마다 가장 높은 레벨은 색으로 표시 · 각성 칸에 마우스를 올리면 도술 목록" + (gmBusy ? " · 최신 정보 확인 중…" : "")));
+  box.appendChild(cel("p", "cm-meta", "길드원 " + L.length + "명 · 가나다 순 · 열마다 가장 높은 레벨은 색으로 표시" + (gmBusy ? " · 최신 정보 확인 중…" : "")));
   const wrap = cel("div", "gm-wrap"), tb = cel("table", "gm-tbl");
   const hr = cel("tr"); hr.appendChild(cel("th", "nk", "닉네임")); hr.appendChild(cel("th", null, "주력"));
   for (const s of cols) hr.appendChild(cel("th", null, s));
@@ -350,7 +350,6 @@ function gmRender(){
     tr.appendChild(cel("td", null, String(sum(m))));
     const aw = Object.entries(m.awaken || {});
     const ac = cel("td", aw.length ? null : "z", aw.length ? String(aw.length) : "·");
-    if (aw.length) ac.title = aw.map(([n, k]) => n + " " + k + "단계").join("\n");
     tr.appendChild(ac);
     const dt = new Date(Number(m.updatedAt));
     tr.appendChild(cel("td", "z", isNaN(dt) ? "" : (dt.getMonth() + 1) + "/" + dt.getDate()));
