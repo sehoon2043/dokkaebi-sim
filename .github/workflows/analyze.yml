@@ -3,14 +3,21 @@ on:
   schedule:
     - cron: "0 0,12 * * *"   # 한국 시간 오전 9시, 밤 9시(예비)
   workflow_dispatch:
+    inputs:
+      id:
+        description: "프로필 해시(저장 서버가 넣음). 비우면 대기 중인 프로필 전부"
+        required: false
+        default: ""
+# 저장 직후 실행은 사람(해시)마다 따로 돌아 남의 계산을 기다리지 않는다. 같은 사람이 다시 저장하면 이전 계산은 취소
 concurrency:
-  group: analyze
-  cancel-in-progress: false
+  group: analyze-${{ inputs.id || 'all' }}
+  cancel-in-progress: ${{ inputs.id != '' && inputs.id != null }}
 env:
   DOSA_URL: ${{ secrets.DOSA_URL }}
   DOSA_KEY: ${{ secrets.DOSA_KEY }}
 jobs:
   plan:
+    if: ${{ !inputs.id }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -27,18 +34,20 @@ jobs:
         run: python analyze.py --plan >> "$GITHUB_OUTPUT"
   run:
     needs: plan
-    if: ${{ needs.plan.outputs.ids != '[]' && needs.plan.outputs.ids != '' }}
+    if: ${{ !cancelled() && (inputs.id || (needs.plan.result == 'success' && needs.plan.outputs.ids != '[]' && needs.plan.outputs.ids != '')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       max-parallel: 10
       matrix:
-        id: ${{ fromJSON(needs.plan.outputs.ids) }}
+        id: ${{ fromJSON(inputs.id && format('["{0}"]', inputs.id) || needs.plan.outputs.ids) }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: 프로필 하나 계산
-        run: python analyze.py --one ${{ matrix.id }}
+        env:
+          ID: ${{ matrix.id }}
+        run: python analyze.py --one "$ID"

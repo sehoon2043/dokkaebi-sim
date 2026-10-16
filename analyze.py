@@ -1,7 +1,7 @@
 # 도사 수첩 자동 분석: 저장 서버(Vercel)에서 새로 저장된 프로필을 받아 추천 트리를 계산해 돌려준다(진행률도 서버에 보고)
 #   python analyze.py                 → DOSA_URL·DOSA_KEY 환경변수로 대기 중인 프로필 전부 처리
 #   python analyze.py --local p.json  → 로컬 프로필 파일 하나 계산해서 결과 출력(테스트용)
-import json, os, sys, time, random, urllib.request, urllib.parse
+import json, os, re, sys, time, random, urllib.request, urllib.parse
 from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "sim"))
@@ -563,6 +563,9 @@ def main():
         print("ids=" + json.dumps([tag(x["nick"]) for x in r["list"]]))
         return
     if len(sys.argv) > 2 and sys.argv[1] == "--one":
+        if not re.fullmatch(r"[0-9a-f]{10}", sys.argv[2]):
+            print("잘못된 해시", file=sys.stderr)
+            sys.exit(1)
         r = call(url, {"a": "pending", "key": key})
         todo = [x for x in r.get("list", []) if tag(x["nick"]) == sys.argv[2]]
         print("대기", len(todo), "· 병렬", WORKERS)

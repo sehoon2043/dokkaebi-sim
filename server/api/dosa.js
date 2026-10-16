@@ -9,7 +9,7 @@
 //   POST {a:"result", key, nick, updatedAt, result}   분석 결과 기록(관리자)
 //   POST {a:"import", key, profiles:[...]}            옮겨 오기(관리자)
 // 환경 변수: ADMIN_KEY, GH_TOKEN(저장 직후 GitHub Actions 분석 요청), Upstash 연결 값(KV_REST_API_URL·KV_REST_API_TOKEN 또는 UPSTASH_REDIS_REST_URL·TOKEN)
-// Redis 키: p:<닉네임> 프로필 전체, m:<닉네임> 길드원 현황 요약, g:<닉네임> 분석 진행률(1시간 뒤 삭제), nicks 닉네임 목록, lastDispatch
+// Redis 키: p:<닉네임> 프로필 전체, m:<닉네임> 길드원 현황 요약, g:<닉네임> 분석 진행률(1시간 뒤 삭제), nicks 닉네임 목록, lastDispatch:<해시>(1시간 뒤 삭제)
 import { Redis } from "@upstash/redis";
 import { createHash } from "node:crypto";
 
@@ -88,23 +88,26 @@ async function putProfile(prof) {
   await p.exec();
 }
 
-// 저장 직후 GitHub Actions 분석 실행 요청 (30초 안 중복 요청은 생략)
-async function dispatch() {
+// 저장 직후 GitHub Actions 분석 실행 요청. 사람(닉네임 해시)마다 따로 실행해 남의 계산을 기다리지 않음
+// 같은 사람 10초 안 중복 요청은 생략(계산 작업이 시작할 때 최신 저장본을 다시 읽으므로 빠지는 저장은 없음)
+async function dispatch(nick) {
   const token = process.env.GH_TOKEN;
   if (!token) {
     return "no-token";
   }
-  const last = Number((await db().get("lastDispatch")) || 0);
-  if (Date.now() - last < 30 * 1000) {
+  const id = createHash("sha1").update(nick, "utf8").digest("hex").slice(0, 10);
+  const key = "lastDispatch:" + id;
+  const last = Number((await db().get(key)) || 0);
+  if (Date.now() - last < 10 * 1000) {
     return "skip";
   }
   const res = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows/${GH_WORKFLOW}/dispatches`, {
     method: "POST",
     headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json", "Content-Type": "application/json", "User-Agent": "dosa-api" },
-    body: JSON.stringify({ ref: "main" }),
+    body: JSON.stringify({ ref: "main", inputs: { id } }),
   });
   if (res.status === 204) {
-    await db().set("lastDispatch", String(Date.now()));
+    await db().set(key, String(Date.now()), { ex: 3600 });
     return "ok";
   }
   return "fail-" + res.status;
@@ -184,7 +187,7 @@ async function handlePost(b) {
     await putProfile(prof);
     let run = "none";
     try {
-      run = await dispatch();
+      run = await dispatch(nick);
     } catch (e) {
       run = "error";
     }
