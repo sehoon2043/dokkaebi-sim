@@ -246,7 +246,7 @@ $("pnBtn").addEventListener("click", () => {
 });
 $("pnClose").addEventListener("click", () => $("pnDlg").close());
 $("pnDlg").addEventListener("click", e => { if (e.target === $("pnDlg")) $("pnDlg").close(); });
-// 커뮤니티 소식: 예약 작업이 4시간마다 community.json 을 갱신(summary.hot = 핫이슈, 맨 위에 표시)
+// 커뮤니티 소식: 예약 작업이 2시간마다 community.json 을 갱신(summary.hot = 핫이슈, 맨 위에 표시)
 const LSC = "dosa-notebook-site-cm";
 let CM = null;
 function cel(tag, cls, txt){ const x = document.createElement(tag); if (cls) x.className = cls; if (txt != null) x.textContent = txt; return x; }

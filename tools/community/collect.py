@@ -1,7 +1,7 @@
 # 커뮤니티 수집: 디시 도깨비의세계 갤러리 새 글 + 공식 포럼 새 공지를 요약하기 좋은 텍스트로 모은다
 #   python tools/community/collect.py <community.json> <출력 txt>
 #   community.json 의 meta.last_dc(마지막으로 본 디시 글 번호)·meta.last_forum(마지막으로 본 공지 시각, 한국 시간)
-#   이후 글만 모은다. 처음이면 최근 4시간 분량.
+#   이후 글만 모은다. 처음이면 최근 4시간 분량. 올라온 지 1시간이 안 된 글은 다음 실행으로 미룬다(댓글이 달릴 시간).
 # 표준 라이브러리만 사용(클라우드 실행용). 요청 사이 쉼을 두고 동시 요청은 3개까지
 import json, re, sys, html, time, datetime as dt, urllib.request, concurrent.futures as cf
 
@@ -12,6 +12,7 @@ DC = "https://m.dcinside.com/board/tokkebiworld"
 FB = "https://forum-api.kakaogames.com/v1/dokkaebi/boards"
 MAX_PAGES = 100     # 디시 목록 최대 페이지(약 3,000개, 실행이 몇 번 빠져도 놓치지 않게)
 MAX_BODIES = 110    # 본문까지 읽을 글 수
+HOLD_MIN = 60       # 올라온 지 이 시간(분)이 안 된 글은 댓글이 더 달리게 다음 실행으로 미룸
 MAX_CMT = 1500      # 글 하나에서 읽을 댓글 글자 수(댓글 40개 안팎이 다 들어감)
 STOP = set("도깨비 도깨비의세계 그냥 이거 이게 근데 진짜 지금 오늘 혹시 다들 이번 그럼 너무 아니 ㅋㅋ ㅋㅋㅋ ㅋㅋㅋㅋ 질문 뭐임 있음 없음 하는 하면 하고 있나 있냐 이건 나만 왜케 무슨".split())
 KW = re.compile(r"공지|패치|점검|보상|쿠폰|버그|너프|하향|상향|메타|빌드|트리|세팅|덱|절명|파멸|저격|연타|기동|주술|강타|헌신|기만|척살|제압|강인|"
@@ -50,7 +51,8 @@ def dc_list(last):
         for n, t, info, c in found:
             lis = [text(x) for x in re.findall(r"<li[^>]*>(.*?)</li>", info, re.S)]
             num = lambda k: int(re.sub(r"\D", "", next((x for x in lis if x.startswith(k)), "0")) or 0)
-            posts[int(n)] = {"t": text(t), "v": num("조회"), "r": num("추천"), "c": int(c)}
+            tm = next((x for x in lis if re.fullmatch(r"\d{2}:\d{2}", x)), "")
+            posts[int(n)] = {"t": text(t), "v": num("조회"), "r": num("추천"), "c": int(c), "tm": tm}
         if not found or min(int(n) for n, *_ in found) <= last:
             break
     return {n: q for n, q in posts.items() if n > last}
@@ -105,6 +107,17 @@ def main():
         first = LI.findall(get(f"{DC}?page=1", UA_M))
         last_dc = max((int(n) for n, *_ in first), default=0) - 800
     posts = dc_list(last_dc)
+    # 막 올라온 글은 미룸(그보다 뒤 번호도 함께 미뤄 다음 실행이 이어서 읽게)
+    fresh = []
+    for n, q in posts.items():
+        if q["tm"]:
+            t = now.replace(hour=int(q["tm"][:2]), minute=int(q["tm"][3:]), second=0, microsecond=0)
+            if t > now + dt.timedelta(minutes=5):
+                t -= dt.timedelta(days=1)
+            if now - t < dt.timedelta(minutes=HOLD_MIN):
+                fresh.append(n)
+    if fresh:
+        posts = {n: q for n, q in posts.items() if n < min(fresh)}
     top = sorted(posts, key=lambda n: -(posts[n]["r"] * 20 + posts[n]["c"] * 6 + posts[n]["v"] * 0.1 + (80 if KW.search(posts[n]["t"]) else 0)))[:MAX_BODIES]
     with cf.ThreadPoolExecutor(3) as ex:
         bodies = list(ex.map(dc_body, sorted(top)))
