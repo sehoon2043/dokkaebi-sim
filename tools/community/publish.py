@@ -1,6 +1,6 @@
 # 요약을 사이트의 community.json 에 반영하고 수집 위치(meta)를 갱신한다
 #   python tools/community/publish.py <entry.json> <collect 출력.meta.json> <사이트 community.json>
-# entry.json: {"range": "10/14 16:51~19:55", "headline": "한 줄", "sections": [{"h": "제목", "items": ["...", ...]}, ...],
+# entry.json: {"range": "10/14 16:51~19:55", "headline": "한 줄", "hot": [{"k": "공식", "t": "핫이슈"}], "sections": [{"h": "제목", "items": ["...", ...]}, ...],
 #              "summary": {"range": "10/14 14:36~19:55", "headline": "...", "sections": [{"h": "...", "items": [{"k": "공식", "t": "..."}, ...]}]}}
 #   - 맨 위 필드: 이번 구간 기록(entries 맨 앞에 추가)
 #   - summary: 지금까지를 합친 요약(통째로 교체). 디시 글 수·공지 수는 여기서 누적
@@ -21,9 +21,16 @@ def check(secs):
             if isinstance(it, dict):
                 assert it.get("t") and it.get("k", "의견") in KINDS, "항목 형식 오류: " + json.dumps(it, ensure_ascii=False)
 
+def check_hot(h):
+    assert isinstance(h, list) and len(h) <= 3, "hot 은 0~3개 목록"
+    if h:
+        check([{"h": "hot", "items": h}])
+
 check(e.get("sections"))
+check_hot(e.setdefault("hot", []))
 if sm:
     check(sm.get("sections"))
+    check_hot(sm.setdefault("hot", []))
 try:
     d = json.load(open(site, encoding="utf-8"))
 except Exception:

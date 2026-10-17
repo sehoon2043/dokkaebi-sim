@@ -56,6 +56,7 @@ rep('.bar .status{',
     '.cm-list li{display:flex;gap:6px;align-items:baseline}\n'
     '.cm-k{flex:none;font-size:.7rem;font-weight:600;padding:1px 6px;border-radius:9px;border:1px solid currentColor;color:var(--muted)}\n'
     '.cm-k.k-official{color:var(--accent)}.cm-k.k-report{color:var(--ok)}.cm-k.k-warn{color:var(--warn)}\n'
+    '.cm-hot{border:1px solid var(--warn);border-radius:10px;padding:8px 12px;margin:6px 0 10px}.cm-hot h4{margin:0 0 4px;color:var(--warn)}\n'
     '.cm-hist{margin-top:14px;border-top:1px solid var(--line);padding-top:8px}.cm-hist summary{cursor:pointer;font-size:.88rem;color:var(--muted)}\n'
     '.cm-hist .pn-ver{font-size:.88rem}\n'
     '.cm-note{font-size:.8rem;color:var(--muted);margin-top:10px}\n'
@@ -245,7 +246,7 @@ $("pnBtn").addEventListener("click", () => {
 });
 $("pnClose").addEventListener("click", () => $("pnDlg").close());
 $("pnDlg").addEventListener("click", e => { if (e.target === $("pnDlg")) $("pnDlg").close(); });
-// 커뮤니티 소식: 클라우드 예약 작업이 4시간마다 community.json 을 갱신
+// 커뮤니티 소식: 예약 작업이 4시간마다 community.json 을 갱신(summary.hot = 핫이슈, 맨 위에 표시)
 const LSC = "dosa-notebook-site-cm";
 let CM = null;
 function cel(tag, cls, txt){ const x = document.createElement(tag); if (cls) x.className = cls; if (txt != null) x.textContent = txt; return x; }
@@ -271,6 +272,11 @@ function cmRender(){
   if (sm) {
     const c = sm.counts || {};
     box.appendChild(cel("p", "cm-meta", (sm.range || "") + " 합산 · 디시 글 " + (c.dc || 0).toLocaleString() + "개" + (c.forum ? " · 공지 " + c.forum + "개" : "") + " · " + (sm.at || "") + " 갱신"));
+    if (sm.hot && sm.hot.length) {
+      const hb = cel("div", "cm-hot"); hb.appendChild(cel("h4", null, "🔥 핫이슈"));
+      const ul = cel("ul", "cm-list"); for (const it of sm.hot) ul.appendChild(cmItem(it));
+      hb.appendChild(ul); box.appendChild(hb);
+    }
     if (sm.headline) box.appendChild(cel("p", "cm-top", sm.headline));
     cmSections(box, sm.sections);
   }
@@ -280,6 +286,7 @@ function cmRender(){
       const d = cel("div", "pn-ver");
       const h3 = cel("h3", null, e.at || ""); h3.appendChild(cel("small", null, (e.range ? e.range + " · " : "") + "디시 새 글 " + ((e.counts || {}).dc || 0) + "개"));
       d.appendChild(h3);
+      if (e.hot && e.hot.length) d.appendChild(cel("p", "cm-hl", "🔥 " + e.hot.map(x => typeof x === "string" ? x : x.t).join(" / ")));
       if (e.headline) d.appendChild(cel("p", "cm-hl", e.headline));
       cmSections(d, e.sections);
       det.appendChild(d);

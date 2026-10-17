@@ -12,6 +12,8 @@ DC = "https://m.dcinside.com/board/tokkebiworld"
 FB = "https://forum-api.kakaogames.com/v1/dokkaebi/boards"
 MAX_PAGES = 100     # 디시 목록 최대 페이지(약 3,000개, 실행이 몇 번 빠져도 놓치지 않게)
 MAX_BODIES = 110    # 본문까지 읽을 글 수
+MAX_CMT = 1500      # 글 하나에서 읽을 댓글 글자 수(댓글 40개 안팎이 다 들어감)
+STOP = set("도깨비 도깨비의세계 그냥 이거 이게 근데 진짜 지금 오늘 혹시 다들 이번 그럼 너무 아니 ㅋㅋ ㅋㅋㅋ ㅋㅋㅋㅋ 질문 뭐임 있음 없음 하는 하면 하고 있나 있냐 이건 나만 왜케 무슨".split())
 KW = re.compile(r"공지|패치|점검|보상|쿠폰|버그|너프|하향|상향|메타|빌드|트리|세팅|덱|절명|파멸|저격|연타|기동|주술|강타|헌신|기만|척살|제압|강인|"
                 r"사냥터|황무지|호랑|비경|엽전|레이드|보스|낙화|승천|돌파|강화|각성|영웅|전설|도안|추옵|추가 ?효과|변경권|거래소|정확도|명중|"
                 r"평타|치명|효율|시간당|분당|실측|dps|정리|팁|확률|제재|정지|라방|방송", re.I)
@@ -113,6 +115,15 @@ def main():
     w(f"# 디시: 글 번호 {last_dc + 1} 이후 새 글 {len(posts)}개 중 반응 많은 {len(bodies)}개 본문·댓글")
     w(f"# 공식 포럼: {last_forum} 이후 새 글 {len(notes)}개")
     w()
+    # 핫이슈 찾기용: 새 글 전체 제목에서 자주 나온 낱말
+    cnt = {}
+    for q in posts.values():
+        for wd in set(re.findall(r"[가-힣A-Za-z0-9]{2,}", q["t"])):
+            if wd not in STOP:
+                cnt[wd] = cnt.get(wd, 0) + 1
+    w("## 새 글 제목에 많이 나온 낱말 (낱말 글수)")
+    w(" · ".join(f"{k} {v}" for k, v in sorted(cnt.items(), key=lambda x: -x[1])[:30]))
+    w()
     w("## 공식 포럼 새 글")
     for k, code, pid, t, c in notes:
         w(f"### [{code} {pid} {k}] {t}\n{c[:6000]}\n")
@@ -121,7 +132,7 @@ def main():
     w("## 디시 갤러리 (글번호 시각 추천 댓글 | 제목 :: 본문 || 댓글)")
     for n, d, body, cs in bodies:
         q = posts[n]
-        w(f"[{n} {d[11:]} 추{q['r']} 댓{q['c']}] {q['t']} :: {body[:500]} || {' / '.join(cs)[:600]}")
+        w(f"[{n} {d[11:]} 추{q['r']} 댓{q['c']}] {q['t']} :: {body[:500]} || {' / '.join(cs)[:MAX_CMT]}")
     out.close()
     newest = max(posts, default=last_dc)
     newest_forum = max([k for k, *_ in notes], default=last_forum)
