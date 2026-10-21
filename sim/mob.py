@@ -61,7 +61,8 @@ ULT_MODE = {"폭주": "연타", "대폭발": "파멸", "천벌": "강타", "신�
 
 def mode_of(order):
     ult = next((x for x in order if x in ULT_MODE), None)
-    if ult and sum(K[k]["style"] == ULT_MODE[ult] for k in order if k in K) >= 3:
+    # 궁극기 자신(천벌·신내림·회전하는 칼날은 K에 있음)은 세지 않음
+    if ult and sum(K[k]["style"] == ULT_MODE[ult] for k in order if k in K and k != ult) >= 3:
         mode = ULT_MODE[ult]
     else:
         mode = "연타" if sum(K[k]["style"] == "연타" for k in order if k in K) >= 3 else "파멸"
