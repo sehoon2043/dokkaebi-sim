@@ -6,7 +6,7 @@
 #   - summary: 지금까지를 합친 요약(통째로 교체). 디시 글 수·공지 수는 여기서 누적
 import json, sys, datetime as dt
 
-KEEP = 36   # 2시간마다면 약 3일치
+KEEP = 12   # 6시간마다면 약 3일치
 KINDS = {"공식", "제보", "의견", "주의"}
 entry, meta_new, site = sys.argv[1], sys.argv[2], sys.argv[3]
 e = json.load(open(entry, encoding="utf-8"))
