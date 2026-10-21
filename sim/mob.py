@@ -18,6 +18,9 @@ EFF = {"화염구": {"dot": "화상"}, "하늘의 심판": {"dot": "화상"},"�
        "연쇄 번개": {"elem": 1, "crack": 1}, "영혼 소용돌이": {"armor": 1}, "회전 난격": {"shatter": 1},
        "연쇄 타격": {"armor2": 1}, "공간 결계": {"vuln5": 1}}
 ARMOR = 0.05
+# 근거리 도술은 자동 사냥에서 몹에게 다가가는 시간이 붙음. 10/21 우물동굴 실측 3회(연타 궁 근접 몰이 vs 파멸 궁 원거리 몰이) 비율에 맞춘 값
+MELEE_GAP = 2.5
+NEAR = {k["n"] for k in D["skills"] if (k.get("q") or "").endswith("근거리")}
 DOTV = {"화상": 2.0, "감전": 2.0, "저주": 0.0}   # 지속 피해(초당, 모델 단위). 10/21: 5 → 2, 저주 삭제
 DS, DA, DE = 5, 5, 10
 K = {}; POK = None; BIG = None
@@ -100,7 +103,7 @@ def sim(order, n, T=300, cast="flat", Kc=20, dot_rage=True):
                 if k == "대폭발": cd[k] = t + BIG[1]; dt = ct(BIG[2])
                 else: cd[k] = t + POK[1]; dt = ct(POK[2]); gain(POK[3] * min(n, 5))
             else:
-                s = K[k]; e = EFF.get(k, {}); dt = ct(s["mot"]) + s["chg"]; h = t + dt
+                s = K[k]; e = EFF.get(k, {}); dt = ct(s["mot"]) + s["chg"] + (MELEE_GAP if k in NEAR else 0.0); h = t + dt
                 sb = 1.0
                 if mode == "강타":
                     sb = 1.10 if cg >= 100 else 1.07 if cg >= 66 else 1.03 if cg >= 33 else 1.0

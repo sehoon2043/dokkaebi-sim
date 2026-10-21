@@ -268,8 +268,8 @@ def _job(job, owned):
             p = VF.polish("mob", owned, o, ult, arrange, lambda t: M.opt(t, 200))
             if p and p[2]:
                 r = (p[0], p[1], ult)
-        r1 = mob_add_heal(r, owned, "생명의 축복")
-        r2 = mob_add_heal(r1, owned, "생명의 흐름")
+        r1 = mob_add_heal(r, owned, "생명의 흐름")   # 10/21: 흐름 회복량이 축복의 2배 이상
+        r2 = mob_add_heal(r1, owned, "생명의 축복")
         return [r, r1, r2]
     if kind == "rng":
         rng = F.search(owned, "ranged", False, seeds=4)
@@ -417,12 +417,12 @@ def analyze(data):
             ref["mob"] = r[0]
         if not r:
             if h == 0:
-                notes.append("몰이: 광역 도술이 부족해 계산하지 못했습니다(연타 광역 3개 또는 파멸 광역 3개 필요).")
+                notes.append("몰이: 광역 도술이 부족해 계산하지 못했습니다(한 스타일 도술 3개와 광역 도술이 필요).")
             continue
         b, o, ult = r
         use = ("몹이 한곳에 모이는 곳(엽전 비경 등)에서 가장 빠른 몰이입니다.",
-               f"물약을 먹을 때. 몰이에서 한 칸만 {EX.josa('생명의 축복', '으로/로')} 바꿨습니다.",
-               f"물약이 많이 들 때. 몰이+힐에서 한 칸만 {EX.josa('생명의 흐름', '으로/로')} 바꿨습니다.")[h]
+               f"물약을 먹을 때. 몰이에서 한 칸만 {EX.josa('생명의 흐름', '으로/로')} 바꿨습니다.",
+               f"물약이 많이 들 때. 몰이+힐에서 한 칸만 {EX.josa('생명의 축복', '으로/로')} 바꿨습니다.")[h]
         pts = [use]
         if not h:
             pts.append(f"하단 {F.style(ult)} 3개 → 궁극기 {ult}")
