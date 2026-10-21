@@ -42,26 +42,31 @@ YT_AOE = ["연쇄 타격", "난타", "회전 난격"]
 
 
 def mob_search(owned, heals):
+    """궁극기(연타·파멸·강타·주술·기만)마다 그 스타일 3개를 넣은 몰이 트리를 찾아 가장 좋은 것"""
     hl = [h for h in ("생명의 축복", "생명의 흐름")[:heals] if h in owned]
     if len(hl) < heals:
         return None
-    aoe = [n for n in M.K if n in owned and n in M.AOE and n not in M.HEALS and M.K[n]["dmg"] > 0]
-    yt = [n for n in aoe if M.K[n]["style"] == "연타"]
-    pm = [n for n in aoe if M.K[n]["style"] == "파멸"]
-    if len(yt) >= 3:
-        ult = "폭주"
-        core = sorted(yt, key=lambda n: -M.K[n]["dmg"] * min(5, M.TGT.get(n, 1)) / M.K[n]["cd"])[:3]
-    elif len(pm) >= 3:
-        ult = "대폭발"
-        core = sorted(pm, key=lambda n: -M.K[n]["dmg"] * min(5, M.TGT.get(n, 1)) / M.K[n]["cd"])[:3]
-    else:
+    aoe = [n for n in M.K if n in owned and n in M.AOE and n not in M.HEALS and M.K[n]["dmg"] > 0 and not M.K[n].get("u")]
+    rs = []
+    for ult, st in M.ULT_MODE.items():   # 궁극기는 보유 목록에 없음(스타일 3개면 자동 등록)
+        r = _mob_one(owned, hl, aoe, ult, st)
+        if r:
+            rs.append(r)
+    return max(rs, key=lambda x: x[0]) if rs else None
+
+
+def _mob_one(owned, hl, aoe, ult, st):
+    val = lambda n: M.K[n]["dmg"] * min(5, M.TGT.get(n, 1)) / M.K[n]["cd"]
+    mine = [n for n in M.K if n in owned and M.K[n]["style"] == st and n not in M.HEALS and M.K[n]["dmg"] > 0 and not M.K[n].get("u")]
+    if len(mine) < 3:
         return None
-    fixed = core + (["영혼 소용돌이"] if "영혼 소용돌이" in owned else []) + hl
+    core = sorted(mine, key=lambda n: (n not in M.AOE, -val(n)))[:3]
+    swirl = ["영혼 소용돌이"] if "영혼 소용돌이" in owned and "영혼 소용돌이" not in core else []
+    fixed = core + swirl + hl
     free = F.NSLOT[0] - len(fixed)
     cand = [n for n in aoe if n not in fixed]
     if free < 0 or len(cand) < free:
         return None
-    val = lambda n: M.K[n]["dmg"] * min(5, M.TGT.get(n, 1)) / M.K[n]["cd"]
     pick = sorted(cand, key=lambda n: -val(n))[:free]
 
     def order_of(sl):
@@ -76,8 +81,8 @@ def mob_search(owned, heals):
     imp = True
     while imp:
         imp = False
-        for i in range(len(fixed), F.NSLOT[0]):
-            for n in cand:
+        for i in list(range(3)) + list(range(len(fixed), F.NSLOT[0])):
+            for n in (mine if i < 3 else cand):
                 if n in sl:
                     continue
                 t = sl[:]
@@ -163,7 +168,7 @@ def community(bd, owned, ref):
         pts.append(f"{label[k]}용 · 내 추천보다 약 {abs(r - 1) * 100:.0f}% " + ("좋음" if r > 1 else "낮음") if abs(r - 1) >= 0.01 else f"{label[k]}용 · 내 추천과 비슷")
     if missing:
         pts.append("안 배운 도술: " + ", ".join(missing) + " (배웠다고 치고 계산)")
-    if ult not in ("폭주", "대폭발"):
+    if ult not in M.ULT_MODE and ult != "연속 쇄도":
         pts.append(f"궁극기 {ult}의 신식·이동 효과는 몰이 계산에 일부만 반영")
     tail = ["작성 " + (bd.get("author") or {}).get("name", "익명") + f" · 추천 {bd.get('likes', 0)}"]
     nm = bd.get("name") or "이름 없는 덱"

@@ -48,16 +48,31 @@ def setup(levels, steps=None):
         if not k["u"] or not k.get("num") or k["n"] in ("폭주", "대폭발"): continue
         st = ST[k["st"]]; n = k["num"]
         hits = sum((d["hits"] or 1) for d in n.get("dc") or []) or 1
-        K[k["n"]] = {"style": st, "dmg": total(k) * mult(st), "cd": n["cd"] or 60.0, "mot": (n.get("m") or 500) / 1000, "hits": hits, "chg": charge_time(k["n"], n)}
+        K[k["n"]] = {"style": st, "dmg": total(k) * mult(st), "cd": n["cd"] or 60.0, "mot": (n.get("m") or 500) / 1000, "hits": hits, "chg": charge_time(k["n"], n), "u": True}
         if TGT.get(k["n"], 1) > 1: AOE.add(k["n"])
     POK = (total(BY["폭주"]) * mult("연타"), BY["폭주"]["num"]["cd"], 3.0, 11, 38.8)
     BIG = (total(BY["대폭발"]) * mult("파멸"), BY["대폭발"]["num"]["cd"], 0.6)
 
-def sim(order, n, T=300, cast="flat", Kc=20, dot_rage=True):
-    mode = "연타" if sum(K[k]["style"] == "연타" for k in order if k in K) >= 3 else "파멸"
+# 궁극기 → 신식 스타일. 트리에 그 스타일 도술이 3개 이상이면 그 신식으로 계산
+ULT_MODE = {"폭주": "연타", "대폭발": "파멸", "천벌": "강타", "신내림": "주술", "회전하는 칼날": "기만"}
+
+def mode_of(order):
+    ult = next((x for x in order if x in ULT_MODE), None)
+    if ult and sum(K[k]["style"] == ULT_MODE[ult] for k in order if k in K) >= 3:
+        mode = ULT_MODE[ult]
+    else:
+        mode = "연타" if sum(K[k]["style"] == "연타" for k in order if k in K) >= 3 else "파멸"
     # 기동 신식(10/21): 도술마다 영력 10, 200이 되면 연속 쇄도 쿨 초기화 + 10초 [연쇄](궁극기 피해 +50%). 귀보(회피)는 자동 사냥이 안 쓰므로 뺌
     if "연속 쇄도" in order and sum(K[k]["style"] == "기동" for k in order if k in K and k != "연속 쇄도") >= 3:
         mode = "기동"
+    return mode
+
+def sim(order, n, T=300, cast="flat", Kc=20, dot_rage=True):
+    mode = mode_of(order)
+    # 강타(10/21): 시전마다 영력 10(최대 100), 33/66/100에서 피해 +3/7/10%, 가득 찬 채 궁극기를 쓰면 일반 도술 쿨 초기화
+    # 주술(10/21): 시전마다 영력 8 → 30/60/90에서 구슬 1/2/3, 궁극기 +30/60/90%, 주술 도술을 쓰면 모든 도술 남은 쿨 0.1초×구슬 감소
+    # 기만: 시전마다 눈물 1, 2개가 되면 방금 쓴 일반 도술 쿨 절반
+    cg = 0; og = 0; tear = 0
     dash = 0; chain = -1
     cd = {k: 0.0 for k in order}; t = 0.0; tot = 0.0; idle = 0.0; u = {}; g = 0; yogi = -1
     rage = 0; last_hit = -99.0
@@ -86,8 +101,14 @@ def sim(order, n, T=300, cast="flat", Kc=20, dot_rage=True):
                 else: cd[k] = t + POK[1]; dt = ct(POK[2]); gain(POK[3] * min(n, 5))
             else:
                 s = K[k]; e = EFF.get(k, {}); dt = ct(s["mot"]) + s["chg"]; h = t + dt
+                sb = 1.0
+                if mode == "강타":
+                    sb = 1.10 if cg >= 100 else 1.07 if cg >= 66 else 1.03 if cg >= 33 else 1.0
+                if mode == "주술" and s.get("u"):
+                    ob = 3 if og >= 90 else 2 if og >= 60 else 1 if og >= 30 else 0
+                    sb = 1 + 0.3 * ob
                 for i in tg(k):
-                    d = s["dmg"] * (1.5 if k == "연속 쇄도" and t < chain else 1.0)
+                    d = s["dmg"] * sb * (1.5 if k == "연속 쇄도" and t < chain else 1.0)
                     if e.get("eb") and u.get("원소", -1) > t: d *= 1 + e["eb"]
                     if e.get("bc") and u.get(("한기", i), -1) > t: d *= 1 + e["bc"]
                     m = 1 + 0.10 * (u.get(("파쇄", i), -1) > t) + 0.10 * (u.get(("파열", i), -1) > t) + 0.10 * (u.get(("결계", i), -1) > t) + ARMOR * ((u.get(("방깎", i), -1) > t) + (u.get(("방깎2", i), -1) > t))
@@ -105,6 +126,23 @@ def sim(order, n, T=300, cast="flat", Kc=20, dot_rage=True):
                 if "elem" in e: u["원소"] = h + DE
                 cd[k] = t + s["cd"]
                 gain(s.get("hits", 1) * len(list(tg(k))))
+                if mode == "강타":
+                    if s.get("u") and cg >= 100:
+                        cg = 0
+                        for x in order:
+                            if not K.get(x, {}).get("u") and x not in ("폭주", "대폭발"): cd[x] = min(cd[x], h)
+                    else:
+                        cg = min(100, cg + 10)
+                if mode == "주술":
+                    og = min(100, og + 8)
+                    ob = 3 if og >= 90 else 2 if og >= 60 else 1 if og >= 30 else 0
+                    if ob and s["style"] == "주술":
+                        for x in order:
+                            if cd[x] > h: cd[x] = max(h, cd[x] - 0.1 * ob)
+                if mode == "기만":
+                    tear = min(2, tear + 1)
+                    if tear >= 2 and not s.get("u"):
+                        cd[k] = t + max(s["cd"] * 0.5, dt); tear = 0
                 if mode == "기동":
                     dash += 10
                     if dash >= 200:
