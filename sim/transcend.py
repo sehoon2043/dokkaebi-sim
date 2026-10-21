@@ -21,11 +21,13 @@ def effect(name, step, base_cd):
 
 
 def steps_of(owned):
-    """수첩 owned {도술: {br: n}} → {도술: 돌파 단계}"""
+    """수첩 owned {도술: {dp: n}} → {도술: 돌파 단계}
+    br은 각성(도술 별 단계)이라 캐릭터 능력치만 오르고 도술 피해·쿨은 그대로다(10/09 사용자 확인) → 계산에 쓰지 않는다.
+    돌파(스타일 50강 뒤 1~10단계)는 dp로 받는다(사이트 입력 칸은 아직 없음)."""
     out = {}
     for n, v in (owned or {}).items():
         try:
-            s = int((v or {}).get("br") or 0)
+            s = int((v or {}).get("dp") or 0)
         except (TypeError, ValueError, AttributeError):
             s = 0
         if s > 0:

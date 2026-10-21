@@ -1,5 +1,5 @@
 # 계산용 게임 데이터 읽기
-#   도술 수치표(skills.json)·각성 표(transcend.json)는 외부 자료를 정리한 것이라 저장소에 넣지 않는다.
+#   도술 수치표(skills.json)·돌파 표(transcend.json)는 외부 자료를 정리한 것이라 저장소에 넣지 않는다.
 #   data/에 파일이 있으면 그것을 쓰고, 없으면 저장 서버(DOSA_URL·DOSA_KEY)에서 받아 data/에 둔다.
 import json, os, urllib.parse, urllib.request
 

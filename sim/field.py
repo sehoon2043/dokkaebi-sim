@@ -13,15 +13,23 @@ EV = S.EV
 
 OH = 0.3        # 필드: 도술 사이 딜레이(실측 없음, 대상 찾기·이동 포함 가정)
 HEALS = {"생명의 축복", "생명의 흐름"}
+# 힐 1개 트리에 넣을 힐(앞쪽 우선): 10/21 패치로 생명의 흐름(공격력 12%×5, 쿨 15초)이 축복(35%, 쿨 20초)보다 초당 회복 2배 이상
+HEAL_PICK = ("생명의 흐름", "생명의 축복")
+
+
+def heal_of(owned):
+    return next((h for h in HEAL_PICK if h in owned), None)
 LV = {"*": 0}
-# (저격 피해 보정, 암습 피해 보정, 검의 형상 쿨 감소): 10/15 허수아비 실측 4회(절명 보스 트리 5분)에 맞춤
-HUNT_P = [(0.9, 0.6, 6), (0.95, 0.65, 6)]
-BOSS_P = [(0.9, 0.6, 6), (0.95, 0.65, 6), (0.9, 0.65, 6), (1.0, 0.65, 6)]
-# 보스: 같은 실측 4회에서 도술 사이 딜레이 0.05초, 평타 0.7초마다 1회(모델 단위 70)일 때 평타 횟수·DPS 차이가 1% 안으로 맞음
+# (저격 피해 보정, 암습 피해 보정, 검의 형상 쿨 감소): 10/21 패치 뒤 허수아비 실측(절명 신식3 트리 5분 2초, 도술별 횟수·피해 비중)에 맞춤.
+#   네 값 모두 도술별 횟수 ±2회, 비중 오차(제곱합) 2.1 아래. tools/check.py '실측 재현'이 이 범위를 지키는지 본다
+#   (10/15 실측 기준이던 예전 값 저격 0.9·암습 0.6은 10/21 실측과 비중 오차 9.2)
+HUNT_P = [(0.95, 0.65, 6), (1.0, 0.7, 5)]
+BOSS_P = [(0.95, 0.65, 6), (1.0, 0.65, 7), (0.95, 0.7, 5), (1.0, 0.7, 5)]
+# 보스: 도술 사이 딜레이 0.05초, 평타 0.75초마다 1회(모델 단위 70). 10/21 실측 평타 213회(모델 215회, 0.7초면 229회)
 # 필드는 이동과 겹치고 몹이 금방 죽어서 평타를 아직 넣지 않음
 OH_BOSS = 0.05
 BASIC_BOSS = 70.0
-BASIC_I = 0.7
+BASIC_I = 0.75
 HS = (1.5, 3.0, 5.0)
 T = 300
 REF = [290.0]
@@ -183,7 +191,7 @@ def climb(c, seed, travel, cand, fixed=(), melee=False):
 def search(owned, kind, heal, seeds=5, travel=None):
     """kind: 'ranged' (저격·파멸) / 'melee' (절명 3개 이상 + 아무 도술). 결과 [(처치 속도, 칸, 순서)] 내림차순"""
     P = pool(owned)
-    heal_n = "생명의 축복" if heal and "생명의 축복" in owned else None
+    heal_n = heal_of(owned) if heal else None
     if heal and not heal_n:
         return []
     melee = kind == "melee"
@@ -329,7 +337,7 @@ def style_hunt(owned, st, seeds=4, heal=False):
     need = NSLOT[0] - 1 if heal else NSLOT[0]
     if len(J) < 3 or len(P) < need or not ult:
         return []
-    heal_n = "생명의 축복" if heal and "생명의 축복" in owned else None
+    heal_n = heal_of(owned) if heal else None
     if heal and not heal_n:
         return []
     kind = {"절명": "근", "연타": "근", "강타": "근", "척살": "근", "저격": "원", "주술": "원", "파멸": "원"}.get(st)

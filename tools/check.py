@@ -96,14 +96,24 @@ def name_checks():
     for k in S.APPLY.values():
         for x in k:
             ok(x in S.DOT or x in S.DUR or x in ("낙인", "관통", "충격", "파쇄", "파열", "동상", "출혈", "화상", "감전", "약화"), f"효과 부여: 모르는 효과 '{x}'")
-    ok(M.EFF.get("공간 결계", {}).get("vuln5") == 1, "공간 결계의 받는 피해 +5%가 몰이 계산에서 빠짐")
+    ok(M.EFF.get("공간 결계", {}).get("vuln5") == 1, "공간 결계의 받는 피해 +10%가 몰이 계산에서 빠짐")
+    # 몰이 계산에도 보스·필드(timeline)와 같은 연계가 들어가야 함(광역 도술끼리 이어지는 것)
+    for n in ("휘둘러 내려치기", "회전 난격", "휘둘러치기"):
+        ok(M.EFF.get(n, {}).get("shatter"), f"몰이 계산: {n}의 파쇄 부여가 빠짐")
+    for n in ("크게 베기", "검기 날리기"):
+        ok(M.EFF.get(n, {}).get("rsrc"), f"몰이 계산: {n}의 파열 부여가 빠짐")
+    for n in ("내려찍기", "내려치기"):
+        ok(M.EFF.get(n, {}).get("rupt"), f"몰이 계산: {n}의 파열 대상 받는 피해 +10%가 빠짐")
+    for n, ty in (("화염구", "화상"), ("하늘의 심판", "화상"), ("번개 폭풍", "감전"), ("일섬", "감전")):
+        ok(M.EFF.get(n, {}).get("dot") == ty, f"몰이 계산: {n}의 {ty} 지속 피해가 빠짐")
 
 
 # ---------- 3. 계산 모델 성질 ----------
 ALL = {k["n"]: {} for k in D["skills"]}
+# 수첩의 br = 각성(도술 별 단계, 캐릭터 능력치만 오름). 도술 피해·쿨이 바뀌는 돌파는 dp(아직 입력 칸 없음)
 PROFILES = {
     "전부 보유·강화 10": {"levels": {s: 10 for s in STYLES}, "owned": ALL},
-    "전부 보유·강화 20·돌파 3": {"levels": {s: 20 for s in STYLES}, "owned": {n: {"br": 3} for n in ALL}},
+    "전부 보유·강화 20·돌파 3": {"levels": {s: 20 for s in STYLES}, "owned": {n: {"dp": 3} for n in ALL}},
 }
 
 
@@ -153,9 +163,13 @@ def model_checks():
     for k, f in fs.items():
         ok(f() >= base[k] - 1e-9, f"{k} 점수가 강화를 올렸는데 줄어듦")
     # 돌파를 올리면 점수가 줄지 않아야 함
-    setup({"levels": p["levels"], "owned": {n: {"br": 5} for n in ALL}})
+    setup({"levels": p["levels"], "owned": {n: {"dp": 5} for n in ALL}})
     for k, f in fs.items():
         ok(f() >= base[k] - 1e-9, f"{k} 점수가 돌파를 올렸는데 줄어듦")
+    # 각성(br)은 캐릭터 능력치만 올리고 도술 피해·쿨은 그대로(10/09 사용자 확인, 사이트 안내문도 같음)
+    setup({"levels": p["levels"], "owned": {n: {"br": 5} for n in ALL}})
+    for k, f in fs.items():
+        ok(abs(f() - base[k]) < 1e-9, f"{k} 점수가 각성(br)에 따라 바뀜 — 각성은 도술 피해·쿨에 영향 없음")
     # 공간 결계 보정은 결계가 있을 때만
     setup(p)
     o2 = [x for x in mo]
@@ -185,13 +199,99 @@ def result_checks():
     p = {"levels": {"저격": 10, "파멸": 10, "절명": 5, "연타": 5}, "owned": {n: {} for n in ALL if STYLE_OF[n] in ("저격", "파멸", "절명", "연타", "헌신", "주술", "기만")}}
     r = A.analyze(p)
     ok(r["trees"], "작은 프로필 분석 결과에 트리가 없음")
+    # 계산 방식 버전: 예전 방식 결과는 다시 계산 대상
+    ok(r.get("engine") == A.ENGINE, "분석 결과에 계산 방식 버전(engine)이 없음")
+    ok(not A.stale({"updatedAt": "1", "resultFor": "1", "result": r}), "지금 방식으로 계산한 결과를 다시 계산하려 함")
+    ok(A.stale({"updatedAt": "1", "resultFor": "1", "result": {"trees": []}}), "예전 방식(engine 없음) 결과를 다시 계산하지 않음")
+    ok(A.stale({"updatedAt": "2", "resultFor": "1", "result": r}), "새로 저장한 프로필을 다시 계산하지 않음")
     ok(not [n for n in r["notes"] if "오류" in n], f"분석 메모에 오류: {r['notes']}")
     for t in r["trees"]:
         tree_checks(t, set(p["owned"]), "작은 프로필")
+    # 10/21 패치로 생명의 흐름(공격력 12%×5, 쿨 15초)이 축복(35%, 쿨 20초)보다 초당 회복 2배 이상 → 필드 힐 트리도 흐름
+    by = {t["id"]: t for t in r["trees"]}
+    for tid in ("pureh", "singleh", "jhunt_h"):
+        if tid in by:
+            ok("생명의 흐름" in by[tid]["order"], f"작은 프로필 {tid}: 생명의 흐름을 배웠는데 힐이 흐름이 아님")
+
+
+# ---------- 5. 실측 재현 (보정값이 실측에서 벗어나지 않았는지) ----------
+# 10/21 절명 신식3 허수아비(다후 노강, 5분 02초): 도술별 (횟수, 피해 비중 %)
+MEAS_1021 = {"order": ["휘둘러 내려치기", "화염 분출", "사격", "꿰뚫는 저격", "내려찍기", "암습", "찌르기", "크게 베기", "약점 베기"],
+             "sec": 302.0,
+             "hit": {"암습": (31, 37.4), "평타": (213, 10.3), "사격": (62, 7.5), "꿰뚫는 저격": (20, 7.4), "약점 베기": (24, 7.4),
+                     "휘둘러 내려치기": (48, 6.7), "찌르기": (39, 6.6), "내려찍기": (39, 6.5), "크게 베기": (27, 6.2), "화염 분출": (32, 4.1)}}
+
+
+def replay(P, meas):
+    """보스 모델로 실측 트리를 다시 돌려 도술별 (횟수, 비중 %)"""
+    m, k, c = P
+    S.CD_RED = c
+    S.AMP_HIT.clear()
+    S.AMP_HIT.update(F.AMP0)
+    S.BASIC, S.BASIC_I = F.BASIC_BOSS, F.BASIC_I
+    o = meas["order"]
+    u = next(x for x in o if A.F.S.BY[x]["u"])
+    names = A.arrange(o, u)
+    _, mem, od = S.build(names, F.LV, F.OH_BOSS)
+    for v in od:
+        if v["u"] and v["style"] == "절명":
+            v["damage"] *= k
+        elif v["style"] == "저격":
+            v["damage"] *= m
+    od.sort(key=lambda v: o.index(v["n"]))
+    sim = S.Sim([dict(x) for x in od], mem, meas["sec"])
+    cnt, dmg = {}, {}
+    cast0, wait0 = sim.cast, sim.wait
+
+    def cast(s):
+        t0 = sim.total
+        cast0(s)
+        cnt[s["n"]] = cnt.get(s["n"], 0) + 1
+        dmg[s["n"]] = dmg.get(s["n"], 0) + sim.total - t0
+
+    def wait():
+        t0, n0 = sim.total, sim.now
+        r = wait0()
+        cnt["평타"] = cnt.get("평타", 0) + round((sim.now - n0) / S.BASIC_I)
+        dmg["평타"] = dmg.get("평타", 0) + sim.total - t0
+        return r
+
+    sim.cast, sim.wait = cast, wait
+    sim.run()
+    S.BASIC = 0.0
+    tot = sum(dmg.values())
+    return {x: (cnt.get(x, 0), dmg.get(x, 0) / tot * 100) for x in set(cnt) | set(dmg)}
+
+
+# 10/21 우물동굴 215k 몰이 실측 3회(다후 노강, 8~10분씩): 트리별 처치 속도 비율이 몰이 점수 비율과 맞아야 함
+MOB_1021 = {
+    "1 연타 궁": ["연쇄 타격", "회전 난격", "화염 분출", "화염구", "크게 베기", "난타", "공간 결계", "폭주", "생명의 흐름"],
+    "2 파멸 궁·대검 찍기": ["생명의 흐름", "공간 결계", "검기 폭발", "연쇄 번개", "요기 폭발", "번개 폭풍", "하늘의 심판", "대검 찍기", "대폭발"],
+    "3 파멸 궁·방패 밀기": ["생명의 흐름", "방패 밀기", "공간 결계", "검기 폭발", "연쇄 번개", "요기 폭발", "번개 폭풍", "하늘의 심판", "대폭발"],
+}
+MOB_RATIO = [("2 파멸 궁·대검 찍기", "1 연타 궁", 1.185), ("3 파멸 궁·방패 밀기", "2 파멸 궁·대검 찍기", 0.935)]   # 엽전·처치 비율 평균
+
+
+def measure_checks():
+    setup({"levels": {}, "owned": {}})
+    sc = {k: M.w(o) for k, o in MOB_1021.items()}
+    for a, b, want in MOB_RATIO:
+        r = sc[a] / sc[b]
+        ok(abs(r / want - 1) <= 0.07, f"우물동굴 실측 재현: 몰이 점수 {a} / {b} = {r:.3f}, 실측 {want} (±7% 안이어야 함)")
+    meas = MEAS_1021
+    for P in F.BOSS_P:
+        r = replay(P, meas)
+        e = sum((r.get(x, (0, 0))[1] - p) ** 2 for x, (_, p) in meas["hit"].items())
+        ok(e < 2.5, f"10/21 실측 재현: 보정값 {P}에서 도술별 피해 비중 오차(제곱합) {e:.1f} — 2.5 미만이어야 함")
+        for x, (c0, _) in meas["hit"].items():
+            c = r.get(x, (0, 0))[0]
+            lim = max(2, round(c0 * 0.05))
+            ok(abs(c - c0) <= lim, f"10/21 실측 재현: 보정값 {P}에서 {x} 횟수 {c}회(실측 {c0}회, 허용 ±{lim})")
 
 
 if __name__ == "__main__":
-    for name, fn in (("데이터", data_checks), ("효과 표 이름", name_checks), ("계산 모델", model_checks), ("결과 형식", result_checks)):
+    for name, fn in (("데이터", data_checks), ("효과 표 이름", name_checks), ("계산 모델", model_checks), ("실측 재현", measure_checks),
+                     ("결과 형식", result_checks)):
         if name == "결과 형식" and "--quick" in sys.argv:
             continue
         n0 = len(FAIL)

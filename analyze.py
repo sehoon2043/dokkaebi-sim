@@ -12,6 +12,8 @@ import explain as EX
 import verify as VF
 
 TODAY = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 9 * 3600))
+# 계산 방식 버전: 계산식·보정값·데이터 해석을 바꾸면 올린다. 결과의 engine이 이것과 다르면 다시 저장하지 않아도 다음 실행 때 다시 계산
+ENGINE = "2026-10-22"
 STYLE_ORDER = ["절명", "연타", "강타", "척살", "저격", "주술", "파멸", "강인", "기동", "헌신", "기만", "제압"]
 WORKERS = max(1, min(8, os.cpu_count() or 1))
 PROG = [None]   # 진행률 보고 함수 (pct, 단계 이름)
@@ -452,9 +454,12 @@ def analyze(data):
                           stat(f"1분에 약 {b0:.1f}마리 (몹 1~5초 처치, 몹 사이 이동 0.3초)", rel(b0, base, "평범 사냥")),
                           ["몹이 띄엄띄엄 있거나 옆 몹을 건드리기 싫을 때. 광역 도술 없이 한 마리씩 잡습니다."]))
         trees[-1]["_v"] = b0
+    def heal_in(o):
+        return next((x for x in o if x in F.HEALS), "힐")
+
     if R[("pureh",)]:
         b0, c, o, u = R[("pureh",)]
-        trees.append(tree("pureh", "완전 단일+힐", f"단일 대상 도술만 + 생명의 축복 · 궁극기 {u}", o, u,
+        trees.append(tree("pureh", "완전 단일+힐", f"단일 대상 도술만 + {heal_in(o)} · 궁극기 {u}", o, u,
                           stat(f"1분에 약 {b0:.1f}마리", rel(b0, pure_b, "완전 단일")), ["완전 단일에서 물약이 많이 들 때."]))
     if single_top:
         b0, c, o, u = single_top
@@ -465,7 +470,7 @@ def analyze(data):
         trees[-1]["_v"] = b0
     if R[("rh",)]:
         b0, c, o, u = R[("rh",)]
-        trees.append(tree("singleh", "평범+힐", f"평범 사냥 + 생명의 축복 · 궁극기 {u}", o, u,
+        trees.append(tree("singleh", "평범+힐", f"평범 사냥 + {heal_in(o)} · 궁극기 {u}", o, u,
                           stat(f"1분에 약 {b0:.1f}마리", rel(b0, base, "평범 사냥")), ["평범 사냥에서 물약이 많이 들 때. 원거리라 근접보다 덜 맞습니다."]))
     for heal, tid, tab in ((False, "jhunt", "절명"), (True, "jhunt_h", "절명+힐")):
         r = R[("melee", heal)]
@@ -523,7 +528,7 @@ def analyze(data):
     progress(55, "추천 트리 검증")
     verify_all(trees, owned, (levels, steps, F.REF[0], F.NSLOT[0]), 55, 97)
     progress(97, "커뮤니티 덱 비교")
-    # 커뮤니티 덱(외부 덱 게시판 인기순) — 이 사람 강화·각성 기준 점수와 내 추천 대비
+    # 커뮤니티 덱(외부 덱 게시판 인기순) — 이 사람 강화·돌파 기준 점수와 내 추천 대비
     if not BUILDS:
         notes.append("커뮤니티 덱을 불러오지 못해 이번 계산에서는 빠졌어요.")
     for bd in BUILDS:
@@ -532,8 +537,8 @@ def analyze(data):
         except Exception as e:
             notes.append(f"커뮤니티 덱 '{bd.get('name', '')[:20]}' 계산 실패({type(e).__name__})")
     lv = " · ".join(f"{s} {levels[s]}" for s in STYLE_ORDER if levels.get(s))
-    br = f" · 각성 반영 {len(steps)}개" if steps else ""
-    return {"updated": TODAY, "basis": (lv or "강화 정보 없음") + br + f", 도술 {F.NSLOT[0]}칸", "trees": trees, "notes": notes}
+    br = f" · 돌파 반영 {len(steps)}개" if steps else ""
+    return {"updated": TODAY, "engine": ENGINE, "basis": (lv or "강화 정보 없음") + br + f", 도술 {F.NSLOT[0]}칸", "trees": trees, "notes": notes}
 
 
 # ---------- Apps Script 통신 ----------
@@ -544,6 +549,20 @@ def call(url, params=None, body=None):
         req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers={"Content-Type": "text/plain;charset=utf-8"})
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.loads(r.read().decode("utf-8"))
+
+
+def stale(x):
+    """다시 계산할 프로필: 저장 뒤 아직 계산 안 했거나, 예전 계산 방식(engine)으로 계산된 것"""
+    res = x.get("result") or {}
+    return not x.get("resultFor") or str(x["resultFor"]) != str(x["updatedAt"]) or res.get("engine") != ENGINE
+
+
+def todo_list(url, key):
+    r = call(url, {"a": "all", "key": key})
+    if not r.get("ok"):
+        print("프로필 목록 실패", r.get("err"), file=sys.stderr)
+        sys.exit(1)
+    return [x for x in r["list"] if stale(x)]
 
 
 def main():
@@ -559,20 +578,16 @@ def main():
     key = os.environ["DOSA_KEY"]
     # GitHub Actions: --plan 으로 대기 프로필 목록(닉네임 대신 짧은 해시)을 만들고, --one 해시 로 프로필마다 따로(동시에) 계산
     if len(sys.argv) > 1 and sys.argv[1] == "--plan":
-        r = call(url, {"a": "pending", "key": key})
-        if not r.get("ok"):
-            print("pending 실패", r.get("err"), file=sys.stderr)
-            sys.exit(1)
-        for i, x in enumerate(r["list"]):
+        todo = todo_list(url, key)
+        for i, x in enumerate(todo):
             reporter(url, key, x)(0, "곧 시작")
-        print("ids=" + json.dumps([tag(x["nick"]) for x in r["list"]]))
+        print("ids=" + json.dumps([tag(x["nick"]) for x in todo]))
         return
     if len(sys.argv) > 2 and sys.argv[1] == "--one":
         if not re.fullmatch(r"[0-9a-f]{10}", sys.argv[2]):
             print("잘못된 해시", file=sys.stderr)
             sys.exit(1)
-        r = call(url, {"a": "pending", "key": key})
-        todo = [x for x in r.get("list", []) if tag(x["nick"]) == sys.argv[2]]
+        todo = [x for x in todo_list(url, key) if tag(x["nick"]) == sys.argv[2]]
         print("대기", len(todo), "· 병렬", WORKERS)
         if todo:
             BUILDS[:] = load_builds()
@@ -582,11 +597,7 @@ def main():
     print("커뮤니티 덱", len(BUILDS), "· 병렬", WORKERS)
     done = {}
     for rnd in range(6):   # 분석 중에 새로 저장된 것도 이어서 처리
-        r = call(url, {"a": "pending", "key": key})
-        if not r.get("ok"):
-            print("pending 실패", r.get("err"))
-            sys.exit(1)
-        todo = [p for p in r["list"] if done.get(p["nick"]) != str(p["updatedAt"])]
+        todo = [p for p in todo_list(url, key) if done.get(p["nick"]) != str(p["updatedAt"])]
         print("대기", len(todo))
         if not todo:
             break
@@ -623,7 +634,7 @@ def run_list(todo, url, key, done):
         try:
             res = analyze(p.get("data") or {})
         except Exception as e:
-            res = {"updated": TODAY, "basis": "", "trees": [], "notes": [f"계산 오류: {type(e).__name__}"]}
+            res = {"updated": TODAY, "engine": ENGINE, "basis": "", "trees": [], "notes": [f"계산 오류: {type(e).__name__}"]}
         PROG[0] = None
         w = call(url, body={"a": "result", "key": key, "nick": p["nick"], "updatedAt": p["updatedAt"], "result": res})
         done[p["nick"]] = str(p["updatedAt"])
