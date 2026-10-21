@@ -212,6 +212,14 @@ def result_checks():
     for tid in ("pureh", "singleh", "jhunt_h"):
         if tid in by:
             ok("생명의 흐름" in by[tid]["order"], f"작은 프로필 {tid}: 생명의 흐름을 배웠는데 힐이 흐름이 아님")
+    # 힐 트리는 힐을 사용 순서 맨 앞에(게임에서 체력 조건을 걸어 필요할 때 쓰는 방식)
+    for tid in ("mobheal", "mobheal2", "pureh", "singleh", "jhunt_h"):
+        if tid in by:
+            o = by[tid]["order"]
+            hs = [x for x in o if x in F.HEALS]
+            ok(hs and o[:len(hs)] == hs, f"작은 프로필 {tid}: 힐이 사용 순서 맨 앞이 아님 {o}")
+    if "mobheal2" in by:
+        ok(by["mobheal2"]["order"][0] == "생명의 흐름", "작은 프로필 mobheal2: 회복량이 큰 생명의 흐름이 맨 앞이 아님")
 
 
 # ---------- 5. 실측 재현 (보정값이 실측에서 벗어나지 않았는지) ----------

@@ -41,6 +41,8 @@ def arrange(order, ult):
 
 # ---------- 몰이 ----------
 YT_AOE = ["연쇄 타격", "난타", "회전 난격"]
+# 힐 트리 공통 안내: 힐은 사용 순서 맨 앞 + 게임의 체력 조건. 계산은 쿨마다 쓴다고 봄
+HEAL_TIP = "힐은 맨 앞에 두고 체력 조건(예: 80% 이하)을 걸어 두세요. 계산은 쿨마다 쓴다고 본 값이라 실제 딜 손해는 이보다 작습니다."
 
 
 def mob_search(owned, heals):
@@ -97,17 +99,20 @@ def _mob_one(owned, hl, aoe, ult, st):
 
 
 def mob_add_heal(prev, owned, heal):
-    """몰이 트리에서 한 칸만 힐로 바꾼다(나머지 도술·순서는 그대로). 소용돌이·궁극기·기존 힐은 유지"""
+    """몰이 트리에서 한 칸만 힐로 바꾼다. 힐은 사용 순서 맨 앞(기존 힐 다음)에 두고 나머지 도술·순서는 그대로.
+    게임에서는 힐에 체력 조건(예: 80% 이하)을 걸어 필요할 때만 쓰지만, 계산은 쿨마다 쓴다고 본다(딜 손해를 크게 잡은 값).
+    소용돌이·궁극기·기존 힐은 유지. verify.heal_neighbors와 같은 방식"""
     if not prev or heal not in owned:
         return None
     _, o, ult = prev
     st = F.style(ult)
+    lead = [x for x in o if x in M.HEALS]
+    rest = [x for x in o if x not in M.HEALS]
     best = None
-    for i, x in enumerate(o):
-        if x == ult or x in M.HEALS or x == "영혼 소용돌이":
+    for i, x in enumerate(rest):
+        if x == ult or x == "영혼 소용돌이":
             continue
-        t = o[:]
-        t[i] = heal
+        t = lead + [heal] + rest[:i] + rest[i + 1:]
         if sum(F.style(k) == st for k in t if k != ult and k not in M.HEALS) < 3 or not M.valid_order(t):
             continue
         v = M.w(t)
@@ -229,10 +234,11 @@ def top(tid, rs, owned, kind, tr=None):
     """탐색 1위를 한 칸씩 바꿔 보며 더 좋은 조합이 있으면 바꾼다. (점수, 칸, 순서, 궁극기)"""
     b, c, o = rs[0][:3]
     u = next((x for x in o if F.S.BY[x]["u"]), None) or F.S.ult_for(c)
+    pin = tuple(x for x in o if x in F.HEALS)   # 힐은 맨 앞 고정
     if kind == "boss":
         reopt = lambda t: F.boss_opt(arrange(t, u), t)
     else:
-        reopt = lambda t: F.opt_kills(arrange(t, u), t, tr)
+        reopt = lambda t: F.opt_kills(arrange(t, u), t, tr, pin=pin)
     try:
         r = VF.polish(tid, owned, o, u, arrange, reopt)
     except Exception as e:
@@ -423,9 +429,9 @@ def analyze(data):
             continue
         b, o, ult = r
         use = ("몹이 한곳에 모이는 곳(엽전 비경 등)에서 가장 빠른 몰이입니다.",
-               f"물약을 먹을 때. 몰이에서 한 칸만 {EX.josa('생명의 흐름', '으로/로')} 바꿨습니다.",
+               f"물약을 먹을 때. 몰이에서 한 칸만 {EX.josa('생명의 흐름', '으로/로')} 바꿔 맨 앞에 뒀습니다.",
                f"물약이 많이 들 때. 몰이+힐에서 한 칸만 {EX.josa('생명의 축복', '으로/로')} 바꿨습니다.")[h]
-        pts = [use]
+        pts = [use] + ([HEAL_TIP] if h else [])
         if not h:
             pts.append(f"하단 {F.style(ult)} 3개 → 궁극기 {ult}")
             if "영혼 소용돌이" not in o:
@@ -460,7 +466,7 @@ def analyze(data):
     if R[("pureh",)]:
         b0, c, o, u = R[("pureh",)]
         trees.append(tree("pureh", "완전 단일+힐", f"단일 대상 도술만 + {heal_in(o)} · 궁극기 {u}", o, u,
-                          stat(f"1분에 약 {b0:.1f}마리", rel(b0, pure_b, "완전 단일")), ["완전 단일에서 물약이 많이 들 때."]))
+                          stat(f"1분에 약 {b0:.1f}마리", rel(b0, pure_b, "완전 단일")), ["완전 단일에서 물약이 많이 들 때.", HEAL_TIP]))
     if single_top:
         b0, c, o, u = single_top
         trees.append(tree("single", "평범", f"한 마리씩 잡지만 광역 도술 섞음 · 궁극기 {u}", o, u,
@@ -471,7 +477,7 @@ def analyze(data):
     if R[("rh",)]:
         b0, c, o, u = R[("rh",)]
         trees.append(tree("singleh", "평범+힐", f"평범 사냥 + {heal_in(o)} · 궁극기 {u}", o, u,
-                          stat(f"1분에 약 {b0:.1f}마리", rel(b0, base, "평범 사냥")), ["평범 사냥에서 물약이 많이 들 때. 원거리라 근접보다 덜 맞습니다."]))
+                          stat(f"1분에 약 {b0:.1f}마리", rel(b0, base, "평범 사냥")), ["평범 사냥에서 물약이 많이 들 때. 원거리라 근접보다 덜 맞습니다.", HEAL_TIP]))
     for heal, tid, tab in ((False, "jhunt", "절명"), (True, "jhunt_h", "절명+힐")):
         r = R[("melee", heal)]
         if not r:
@@ -480,7 +486,7 @@ def analyze(data):
         trees.append(tree(tid, tab, "근접 필드 사냥" + (", 힐 1개" if heal else ", 힐 없음") + " · 궁극기 암습", o, "암습",
                           stat(f"1분에 약 {b0:.1f}마리 (몹 사이 이동 0.7초)", f"촘촘하면(0.4초) 약 {k04:.1f}마리", f"흩어져 있으면(1초) 약 {k10:.1f}마리"),
                           ["몹이 촘촘한 곳에서 빠름. 흩어져 있으면 평범이 낫습니다." if not heal else "근접으로 해야 할 때만. 보통은 평범+힐이 더 빠르고 덜 맞습니다.",
-                           "하단 절명 3개 → 궁극기 암습"]))
+                           "하단 절명 3개 → 궁극기 암습"] + ([HEAL_TIP] if heal else [])))
         if not heal:
             trees[-1]["_v"] = b0
     ref["field"] = base

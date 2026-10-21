@@ -186,7 +186,8 @@ def quick(o):
 def idle(o): return sum(sim(o, 5, 300, c, k)[1] for c, k in CONDS) / len(CONDS)
 
 def valid_order(c):
-    if "영혼 소용돌이" in c and c.index("영혼 소용돌이") > 1: return False
+    nh = [x for x in c if x not in HEALS]   # 맨 앞에 둔 힐(게임에서 체력 조건을 걸어 씀)은 소용돌이 위치 규칙에서 뺌
+    if "영혼 소용돌이" in nh and nh.index("영혼 소용돌이") > 1: return False
     if "화염구" in c and "폭주" in c and c.index("화염구") > c.index("폭주"): return False
     return True
 

@@ -134,13 +134,16 @@ def dps_rate(names, order):
     return s / T
 
 
-def opt_kills(names, start, travel):
-    o = start[:]
+def opt_kills(names, start, travel, pin=()):
+    """사용 순서 다듬기. pin(힐)은 맨 앞에 고정: 게임에서 체력 조건을 걸어 필요할 때 쓰는 방식(계산은 쿨마다 쓴다고 봄)"""
+    lead = [x for x in pin if x in start]
+    o = lead + [x for x in start if x not in lead]
+    k0 = len(lead)
     b = kills(names, o, travel)
     for _ in range(3):
         mv = False
-        for i in range(len(o)):
-            for j in range(len(o)):
+        for i in range(k0, len(o)):
+            for j in range(k0, len(o)):
                 if i == j:
                     continue
                 t = o[:]
@@ -229,7 +232,7 @@ def search(owned, kind, heal, seeds=5, travel=None):
         u = "암습" if melee else S.ult_for(c)
         if not u:
             continue
-        b, o = opt_kills(c, c[:1] + [u] + c[1:], tr)
+        b, o = opt_kills(c, c[:1] + [u] + c[1:], tr, pin=(heal_n,) if heal_n else ())
         rs.append((b, c, o))
     rs.sort(key=lambda x: -x[0])
     return rs
@@ -371,7 +374,7 @@ def style_hunt(owned, st, seeds=4, heal=False):
         found[tuple(sorted(c))] = c
     rs = []
     for c in found.values():
-        b, o = opt_kills(c, c[:1] + [ult] + c[1:], tr)
+        b, o = opt_kills(c, c[:1] + [ult] + c[1:], tr, pin=(heal_n,) if heal_n else ())
         rs.append((b, c, o, tr))
     rs.sort(key=lambda x: -x[0])
     return rs

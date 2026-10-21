@@ -162,13 +162,14 @@ def neighbors(sp, o, u):
 
 
 def heal_neighbors(parent, u, heal):
-    """몰이+힐: 부모 트리에서 힐로 바꿀 칸만 다르게 고른 순서들"""
+    """몰이+힐: 부모 트리에서 힐로 바꿀 칸만 다르게 고른 순서들(힐은 맨 앞, analyze.mob_add_heal과 같은 방식)"""
+    lead = [x for x in parent if x in M.HEALS]
+    rest = [x for x in parent if x not in M.HEALS]
     out = []
-    for i, x in enumerate(parent):
-        if x == u or x in M.HEALS or x == "영혼 소용돌이":
+    for i, x in enumerate(rest):
+        if x == u or x == "영혼 소용돌이":
             continue
-        t = parent[:]
-        t[i] = heal
+        t = lead + [heal] + rest[:i] + rest[i + 1:]
         if _ok(t, u) and M.valid_order(t):
             out.append((x, heal, t))
     return out
