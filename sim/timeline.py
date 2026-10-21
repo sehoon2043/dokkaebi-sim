@@ -12,7 +12,7 @@ BY = {k["n"]: k for k in D["skills"]}
 ULT_OF = {ST[k["st"]]: k["n"] for k in D["skills"] if k["u"]}
 
 # ---------- 바꿔 가며 계산하는 값(field.py·verify.py가 고침) ----------
-AMP_HIT = {"파멸/요혼격": 0.10, "저격/꿰뚫는 저격": 0.10, "기만/공간 결계": 0.05}   # 적중 뒤 받는 피해 증가(겹치지 않고 큰 값)
+AMP_HIT = {"파멸/요혼격": 0.10, "저격/꿰뚫는 저격": 0.10, "기만/공간 결계": 0.10}   # 적중 뒤 받는 피해 증가(겹치지 않고 큰 값)
 AMP_SEC = 5
 CD_RED = 6               # 절명: 검의 형상이 가득 찬 상태에서 더 얻으면 궁극기 쿨타임 감소(초)
 FORMS_PER_CAST = True    # 절명: 검의 형상을 도술 1회당 1개(실측과 맞음). False면 타수만큼
@@ -23,29 +23,36 @@ BASIC_I = 0.7            # 평타 1회 동작(초)
 SYN = True               # 상태 이상 연계 계산 여부
 ARM = 0.05               # 방어력 10% 감소 = 피해 +5%로 가정
 
-BUFF_DMG = {"헌신/최후의 저항": ("피해 증가", 0.065, 10), "헌신/용맹의 기운": ("피해 증가", 0.065, 10)}
-BUFF_CD = {"헌신/개전의 가호": 0.08}
-BUFF_CD_SEC = 20
-# 저격 궁극기(정조준): 덱에 있는 상태 이상 종류(출혈·화상·감전·저주) 하나마다 피해 +15%
+BUFF_DMG = {"헌신/용맹의 기운": ("공격력 증가", 0.112, 10)}   # 10/21: 최후의 저항 피해 증가 삭제, 용맹의 기운은 공격력 +11.2%
+BUFF_CD = {"헌신/개전의 가호": 0.10}
+BUFF_CD_SEC = 10
+# 저격 궁극기(정조준): 덱에 있는 상태 이상 종류(출혈·화상·감전·약화) 하나마다 피해 +15%
 STATUS_BY = [["절명/환영 참격", "기동/급소 관통"], ["저격/폭발하는 화살", "파멸/화염구", "파멸/하늘의 심판"], ["파멸/번개 폭풍", "기동/일섬"],
-             ["주술/살 날리기", "주술/저주 내리기", "주술/신벌의 영역", "주술/부적 던지기", "주술/영혼 소용돌이"]]
+             ["주술/살 날리기", "주술/부적 던지기"]]
 
 # ---------- 상태 이상 연계 (도술 설명 기준) ----------
 DUR = {"동상": 5, "파쇄": 5, "저주": 15}     # 지속 시간(사용자 확인), 나머지는 10초
 DUR_DEFAULT = 10
-COND = {"사격": ("파쇄", 0.141), "쇠뇌 사격": ("동상", 0.1815), "약점 베기": ("기운", 0.2652), "얼음화살": ("기운", 0.3481),
-        "심장 절단": ("출혈", 0.1068), "삼단 찌르기": ("충격", 0.1269)}   # 대상이 그 상태면 피해 증가. 마비·빙결은 보스 면역이라 뺌
+COND = {"사격": ("파쇄", 1 / 3), "쇠뇌 사격": ("동상", 1 / 3), "약점 베기": ("기운", 1 / 3), "얼음화살": ("기운", 1 / 3),
+        "심장 절단": ("출혈", 0.23), "삼단 찌르기": ("충격", 1 / 3)}   # 10/21: 대부분 '추가 피해 1회'(계수 합의 1/3)로 바뀜   # 대상이 그 상태면 피해 증가. 마비·빙결은 보스 면역이라 뺌
 APPLY = {"내려찍기": ["낙인"], "약점 베기": ["낙인"], "삼단 찌르기": ["관통"], "환영 참격": ["출혈"], "급소 관통": ["출혈"],
          "주먹 지르기": ["충격"], "연속 충격": ["충격"], "휘둘러 내려치기": ["파쇄"], "회전 난격": ["파쇄"], "휘둘러치기": ["파쇄"],
          "크게 베기": ["파열"], "검기 날리기": ["파열"], "얼음화살": ["동상"], "날카로운 얼음창": ["동상"],
          "폭발하는 화살": ["화상"], "화염구": ["화상"], "하늘의 심판": ["화상"], "번개 폭풍": ["감전"], "일섬": ["감전"],
-         "부적 던지기": ["저주"], "살 날리기": ["저주"], "신벌의 영역": ["저주"], "영혼 소용돌이": ["저주"], "저주 내리기": ["저주"]}
-DOT = {"출혈": 5.0, "화상": 5.0, "감전": 5.0, "저주": 7.0}   # 지속 피해(모델 단위/초)
+         "부적 던지기": ["약화"], "살 날리기": ["약화"]}
+DOT = {"출혈": 2.0, "화상": 2.0, "감전": 2.0}   # 지속 피해(모델 단위/초). 10/21: 공격력 5% → 2%, 주술 저주 지속 피해 삭제
 SELF_ELEM = {"낙뢰", "화염 분출", "붕괴하는 대지", "연쇄 번개"}  # 쓰면 대상에 [기운](원소) 10초
 VULN = {"내려찍기": [("파열", "받피5a")], "내려치기": [("파열", "받피5a")], "화염 분출": [("파쇄", "받피5b")], "연쇄 번개": [("파쇄", "받피5b")],
         "낙뢰": [("관통", "방깎5")], "올려치기": [("관통", "방깎5")]}   # 대상이 앞 상태면 새 디버프(10초)
-VULN_GAIN = {"받피5a": 0.05, "받피5b": 0.05}
+VULN_GAIN = {"받피5a": 0.10, "받피5b": 0.10}   # 10/21: 파열·파쇄 받는 피해 5% → 10%
 ARMOR_SRC = {"연쇄 타격", "영혼 소용돌이"}   # 방어력 10% 감소 5초
+# 차지 도술 단계 수(10/21 공지). 피해 계수는 최대 차지 기준이라 차지 시간(cm × (단계 - 1))을 동작 시간에 더한다
+CHARGE_STAGES = {"크게 베기": 2, "연속 충격": 3, "검기 날리기": 4, "대검 강타": 4, "검기 폭발": 4, "천벌": 4, "일점 저격": 3}
+
+
+def charge_time(name, num):
+    st = CHARGE_STAGES.get(name, 1)
+    return (st - 1) * (num.get("cm") or 0) / 1000 if st > 1 else 0.0
 
 
 # ---------- 도술 데이터 ----------
@@ -99,7 +106,7 @@ def build(names, levels, overhead):
         members.append(m)
         dmg = total(k) * (1 + lvcoef(k, levels))
         if dmg > 0 and nm["cd"] > 0:
-            order.append(dict(m, damage=dmg, cd=nm["cd"], motion=(nm["pm"] or 0) + nm["m"] / 1000 + overhead))
+            order.append(dict(m, damage=dmg, cd=nm["cd"], motion=(nm["pm"] or 0) + nm["m"] / 1000 + charge_time(n, nm) + overhead))
     return u, members, order
 
 
@@ -129,8 +136,8 @@ class Rage(Shinsik):            # 연타: 적중 타수만큼 격노(최대 50),
         self.last = end
 
 
-class Overflow(Shinsik):        # 파멸: 시전마다 영력 15(최대 200) → 요기범람 20초: 피해 +10%, 시전 1.5배 빠름, 일반 도술 쿨 초기화
-    GAIN, FULL, SEC = 15, 200, 20
+class Overflow(Shinsik):        # 파멸: 시전마다 영력 10(최대 200) → 요기범람 30초: 피해 +10%, 일반 도술 쿨 초기화 (10/21: 전개 속도·보호막 삭제)
+    GAIN, FULL, SEC = 10, 200, 30
 
     def __init__(self):
         self.g, self.until = 0, -1.0
@@ -150,18 +157,24 @@ class Overflow(Shinsik):        # 파멸: 시전마다 영력 15(최대 200) →
                     s["charges"], s["ready_at"] = s["stacks"], None
 
 
-class Charge(Shinsik):          # 강타: 시전마다 영력 10(최대 100), 가득 차면 피해 +10%
+class Charge(Shinsik):          # 강타: 시전마다 영력 10(최대 100), 33/66/100에서 피해 +3/7/10%. 가득 찬 채 궁극기를 쓰면 [강압]: 일반 도술 쿨 초기화(10/21)
     def __init__(self):
         self.v = 0
 
     def bonus(self, sim, sk):
-        return 1.10 if self.v >= 100 else 1.0
+        return 1.10 if self.v >= 100 else 1.07 if self.v >= 66 else 1.03 if self.v >= 33 else 1.0
 
     def after(self, sim, sk, start, end):
+        if sk["u"] and self.v >= 100:
+            self.v = 0
+            for s in sim.skills:
+                if not s["u"]:
+                    s["charges"], s["ready_at"] = s["stacks"], None
+            return
         self.v = min(100, self.v + 10)
 
 
-class Locks(Shinsik):           # 제압: 시전마다 자물쇠 1(최대 3), 자물쇠 1개당 피해 +2%, 궁극기가 1개 소모
+class Locks(Shinsik):           # 제압: 시전마다 자물쇠 1(최대 3), 자물쇠 1개당 피해 +2%·궁극기 쿨 3초 감소, 궁극기가 1개 소모(10/21)
     def __init__(self):
         self.v = 0
 
@@ -169,27 +182,40 @@ class Locks(Shinsik):           # 제압: 시전마다 자물쇠 1(최대 3), �
         return 1 + 0.02 * min(3, self.v)
 
     def after(self, sim, sk, start, end):
-        self.v = min(3, self.v + 1)
         if sk["u"]:
+            if sk["ready_at"] is not None:
+                sk["ready_at"] = max(end, sk["ready_at"] - 3 * min(3, self.v))
             self.v = max(0, self.v - 1)
+            return
+        self.v = min(3, self.v + 1)
 
 
-class Execute(Shinsik):         # 척살: 태세 피해 +10%, 시전마다 중첩 1(최대 10) 중첩당 +2%
+class Execute(Shinsik):         # 척살(10/21): 시전마다 영력 3(최대 100, 처치는 계산 안 함) → 척결 1중첩(최대 10): 피해 +2%, 남은 쿨 20%(궁 10%) 감소
     def __init__(self):
-        self.v = 0
+        self.g, self.v = 0, 0
 
     def bonus(self, sim, sk):
-        return 1.10 * (1 + 0.02 * min(10, self.v))
+        return 1 + 0.02 * min(10, self.v)
 
     def after(self, sim, sk, start, end):
-        self.v = min(10, self.v + 1)
+        self.g += 3
+        if self.g >= 100:
+            self.g = 0
+            self.v = min(10, self.v + 1)
+            for s in sim.skills:
+                if s["ready_at"] is not None:
+                    left = s["ready_at"] - end
+                    if left > 0:
+                        s["ready_at"] = end + left * (0.9 if s["u"] else 0.8)
 
 
-class Daggers(Shinsik):         # 절명: 시전(또는 타수)마다 검의 형상(최대 5), 궁극기가 전량 소모해 3/4/5개면 +55/75/125%, 가득 찬 뒤 더 얻으면 궁극기 쿨 감소
-    BONUS = {3: 0.55, 4: 0.75, 5: 1.25}
+class Daggers(Shinsik):         # 절명: 시전(또는 타수)마다 검의 형상(최대 5), 궁극기가 전량 소모해 3/4/5개면 +55/75/125%,
+    BONUS = {3: 0.55, 4: 0.75, 5: 1.25}   # 형상이 가득 찬 상태에서 '도술 최초 시전 시' 궁극기 쿨 감소(10/21).
+    PER_SKILL_ONCE = True                 # 해석: 형상이 가득 찬 동안 도술마다 처음 한 번만 감소, 궁극기를 쓰면 다시. 실측으로 확인 필요
 
     def __init__(self):
         self.v = 0
+        self.used = set()
 
     def bonus(self, sim, sk):
         return 1 + self.BONUS.get(min(5, self.v), 0.0) if sk["u"] and self.v >= 3 else 1.0
@@ -197,19 +223,24 @@ class Daggers(Shinsik):         # 절명: 시전(또는 타수)마다 검의 형
     def after(self, sim, sk, start, end):
         if sk["u"]:
             self.v = 0
+            self.used = set()
             return
         if sk["damage"] <= 0 or (FORMS_STYLE_ONLY and sk["style"] != "절명"):
             return
         full_before = self.v >= 5
         self.v = min(5, self.v + (1 if FORMS_PER_CAST else sk["hits"]))
         if self.v >= 5 and (full_before or not STRICT_MAX):
+            if self.PER_SKILL_ONCE:
+                if sk["n"] in self.used:
+                    return
+                self.used.add(sk["n"])
             for s in sim.skills:
                 if s["u"] and s["ready_at"] is not None:
                     s["ready_at"] = max(end, s["ready_at"] - CD_RED)
 
 
-class Arrows(Shinsik):          # 저격: 1초에 영력 25 → 100마다 화살촉(최대 3). 화살촉 있으면 저격 외 도술 +1.5%/개,
-    def __init__(self):         # 저격 도술이 3개를 모두 소모하면 +45%와 [조준] 10초(모든 피해 +10%)
+class Arrows(Shinsik):          # 저격: 1초에 영력 25 → 100마다 화살촉(최대 3). 화살촉 있으면 저격 외 도술 +5%/개,
+    def __init__(self):         # 저격 도술이 3개를 모두 소모하면 +45%
         self.g, self.n, self.aim, self.spend = 0.0, 0, -1.0, False
 
     def tick(self, sim, dt):
@@ -226,9 +257,7 @@ class Arrows(Shinsik):          # 저격: 1초에 영력 25 → 100마다 화살
         if self.spend:
             m *= 1.45
         elif sk["style"] != "저격" and self.n:
-            m *= 1 + 0.015 * self.n
-        if sim.now < self.aim:
-            m *= 1.10
+            m *= 1 + 0.05 * self.n     # 10/21: 저격 외 도술 +5%/개, [조준](+10%) 삭제
         return m
 
     def after(self, sim, sk, start, end):
@@ -236,8 +265,8 @@ class Arrows(Shinsik):          # 저격: 1초에 영력 25 → 100마다 화살
             self.n, self.aim, self.spend = 0, end + 10, False
 
 
-class Orbs(Shinsik):            # 주술: 시전마다 영력 10(최대 100) → 30/60/90에서 구슬 1/2/3. 궁극기 +34/68/94%,
-    def __init__(self):         # 구슬이 있을 때 주술 도술을 쓰면 일반 도술 남은 쿨 0.3초×구슬 감소
+class Orbs(Shinsik):            # 주술(10/21): 시전마다 영력 8(최대 100) → 30/60/90에서 구슬 1/2/3. 궁극기 +30/60/90%,
+    def __init__(self):         # 구슬이 있을 때 주술 도술을 쓰면 궁극기 포함 모든 도술 남은 쿨 0.1초×구슬 감소
         self.g = 0
 
     def orbs(self):
@@ -245,18 +274,18 @@ class Orbs(Shinsik):            # 주술: 시전마다 영력 10(최대 100) →
 
     def bonus(self, sim, sk):
         o = self.orbs()
-        return 1 + (0.94, 0.68, 0.34)[3 - o] if sk["u"] and o else 1.0
+        return 1 + (0.90, 0.60, 0.30)[3 - o] if sk["u"] and o else 1.0
 
     def after(self, sim, sk, start, end):
-        self.g = min(100, self.g + 10)
+        self.g = min(100, self.g + 8)
         o = self.orbs()
         if o and sk["style"] == "주술":
             for s in sim.skills:
-                if not s["u"] and s["ready_at"] is not None:
-                    s["ready_at"] = max(end, s["ready_at"] - 0.3 * o)
+                if s["ready_at"] is not None:
+                    s["ready_at"] = max(end, s["ready_at"] - 0.1 * o)
 
 
-class Dash(Shinsik):            # 기동: 시전마다 영력 15(최대 200) → 궁극기 쿨 초기화와 [연쇄] 10초(궁극기 피해 1.5배 가정)
+class Dash(Shinsik):            # 기동: 시전마다 영력 10(최대 200, 10/21) → 궁극기 쿨 초기화와 [연쇄] 10초(궁극기 피해 +50%, 툴팁 확인)
     def __init__(self):
         self.g, self.until = 0, -1.0
 
@@ -264,7 +293,7 @@ class Dash(Shinsik):            # 기동: 시전마다 영력 15(최대 200) →
         return 1.5 if sk["u"] and sim.now < self.until else 1.0
 
     def after(self, sim, sk, start, end):
-        self.g += 15
+        self.g += 10
         if self.g >= 200:
             self.g, self.until = 0, end + 10
             for s in sim.skills:
@@ -309,7 +338,7 @@ class Sim:
         self.debuff = {}                # 대상에 걸린 상태: 끝나는 시각
 
     def fast(self):
-        return self.over is not None and self.now < self.over.until
+        return False   # 10/21: 요기범람 전개 속도 50% 증가 삭제
 
     def motion(self, s):
         return s["motion"] / 1.5 if self.fast() else s["motion"]
@@ -364,7 +393,7 @@ class Sim:
             if c and self.debuff.get(c[0], -1) > self.now:
                 m *= 1 + c[1]
             vul = 1 + sum(v for k, v in VULN_GAIN.items() if self.debuff.get(k, -1) > self.now)
-            vul += ARM * (self.debuff.get("방깎", -1) > self.now) + ARM * 0.5 * (self.debuff.get("방깎5", -1) > self.now)
+            vul += ARM * (self.debuff.get("방깎", -1) > self.now) + ARM * (self.debuff.get("방깎5", -1) > self.now)
             m *= vul
         return m
 

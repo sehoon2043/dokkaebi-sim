@@ -95,7 +95,7 @@ def name_checks():
     keyed("상태 이상 종류(STATUS_BY)", [x for g in S.STATUS_BY for x in g])
     for k in S.APPLY.values():
         for x in k:
-            ok(x in S.DOT or x in S.DUR or x in ("낙인", "관통", "충격", "파쇄", "파열", "동상", "출혈", "화상", "감전", "저주"), f"효과 부여: 모르는 효과 '{x}'")
+            ok(x in S.DOT or x in S.DUR or x in ("낙인", "관통", "충격", "파쇄", "파열", "동상", "출혈", "화상", "감전", "약화"), f"효과 부여: 모르는 효과 '{x}'")
     ok(M.EFF.get("공간 결계", {}).get("vuln5") == 1, "공간 결계의 받는 피해 +5%가 몰이 계산에서 빠짐")
 
 
@@ -160,7 +160,7 @@ def model_checks():
     setup(p)
     o2 = [x for x in mo]
     if M.GATHER not in o2:
-        ok(abs(M.quick(o2) - M.sim(o2, 5, 300, "flat", 8)[0]) < 1e-9, "공간 결계 없이도 모으기 보정이 들어감")
+        ok(abs(M.quick(o2) - M.sim(o2, 5, 300, "flat", 20)[0]) < 1e-9, "공간 결계 없이도 모으기 보정이 들어감")
 
 
 # ---------- 4. 결과 형식 ----------
