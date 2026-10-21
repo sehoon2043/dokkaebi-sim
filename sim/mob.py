@@ -13,7 +13,7 @@ LVC[0] = 0.0
 HEALS = {"생명의 축복", "생명의 흐름"}
 AOE = set()
 # 10/21: 얼음화살·쇠뇌 추가 피해가 '1회'(계수 합의 1/3)로, 영혼 소용돌이 저주 삭제, 파쇄·결계 받는 피해 5% → 10%
-EFF = {"화염구": {"dot": "화상"}, "번개 폭풍": {"dot": "감전"}, "얼음화살": {"eb": 1 / 3, "chill": 1}, "날카로운 얼음창": {"chill": 1},
+EFF = {"화염구": {"dot": "화상"}, "하늘의 심판": {"dot": "화상"},"번개 폭풍": {"dot": "감전"}, "얼음화살": {"eb": 1 / 3, "chill": 1}, "날카로운 얼음창": {"chill": 1},
        "쇠뇌 사격": {"bc": 1 / 3}, "낙뢰": {"elem": 1}, "화염 분출": {"elem": 1, "crack": 1}, "붕괴하는 대지": {"elem": 1},
        "연쇄 번개": {"elem": 1, "crack": 1}, "영혼 소용돌이": {"armor": 1}, "회전 난격": {"shatter": 1},
        "연쇄 타격": {"armor2": 1}, "공간 결계": {"vuln5": 1}}
@@ -76,7 +76,7 @@ def sim(order, n, T=300, cast="flat", Kc=20, dot_rage=True):
     dash = 0; chain = -1
     cd = {k: 0.0 for k in order}; t = 0.0; tot = 0.0; idle = 0.0; u = {}; g = 0; yogi = -1
     rage = 0; last_hit = -99.0
-    tg = lambda k: range(min(n, 5)) if k in AOE else [0]
+    tg = lambda k: range(min(n, 5, TGT.get(k, 5))) if k in AOE else [0]   # 툴팁 대상 수(2·4인 등)까지만
     def ct(m):
         return 0.75 if cast == "flat" else max(m, 0.3) + 0.25   # 10/21: 요기범람 전개 속도 증가 삭제
     def rm(): return 1 + 0.004 * rage if mode == "연타" else 1.0
