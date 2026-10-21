@@ -2,7 +2,7 @@
 # 계수·쿨은 data/skills.json(10/21 패치 공지·인게임 툴팁 0강) × (1 + 스타일 강화 계수)
 import json, os, random
 import transcend as TR
-from timeline import charge_time
+from timeline import charge_time, CURSE
 _D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
 D = json.load(open(os.path.join(_D, "skills.json"), encoding="utf-8"))
 TGT = json.load(open(os.path.join(_D, "targets.json"), encoding="utf-8"))
@@ -27,6 +27,8 @@ MELEE_GAP = 2.5
 NEAR = {k["n"] for k in D["skills"] if (k.get("q") or "").endswith("근거리")} | {"방패 밀기", "방패 치기"}
 DOTV = {"화상": 2.0, "감전": 2.0, "저주": 0.0}   # 지속 피해(초당, 모델 단위). 10/21: 5 → 2, 저주 삭제
 DS, DA, DE = 5, 5, 10
+# 신내림 강화 저주 폭발(반경 3m 최대 5명)을 대상마다 몇 번 맞는지: 1 = 자기 폭발만. 모인 몹이 다 같이 터지면 서로 맞아 최대 5번(검증의 가정 흔들기)
+CURSE_HITS = 1
 K = {}; POK = None; BIG = None
 
 def total(k):
@@ -56,6 +58,9 @@ def setup(levels, steps=None):
         st = ST[k["st"]]; n = k["num"]
         hits = sum((d["hits"] or 1) for d in n.get("dc") or []) or 1
         K[k["n"]] = {"style": st, "dmg": total(k) * mult(st), "cd": n["cd"] or 60.0, "mot": (n.get("m") or 500) / 1000, "hits": hits, "chg": charge_time(k["n"], n), "u": True}
+        if k["n"] in CURSE:   # 신내림: 직접 피해와 강화 저주(폭발+지속)를 따로(구슬 보너스는 강화 저주에만)
+            K[k["n"]]["curse"] = sum(CURSE[k["n"]]) * mult(st)
+            K[k["n"]]["burst"] = CURSE[k["n"]][0] * mult(st)
         if TGT.get(k["n"], 1) > 1: AOE.add(k["n"])
     POK = (total(BY["폭주"]) * mult("연타"), BY["폭주"]["num"]["cd"], 3.0, 11, 38.8)
     BIG = (total(BY["대폭발"]) * mult("파멸"), BY["대폭발"]["num"]["cd"], 0.6)
@@ -78,7 +83,7 @@ def mode_of(order):
 def sim(order, n, T=300, cast="flat", Kc=20, dot_rage=True):
     mode = mode_of(order)
     # 강타(10/21): 시전마다 영력 10(최대 100), 33/66/100에서 피해 +3/7/10%, 가득 찬 채 궁극기를 쓰면 일반 도술 쿨 초기화
-    # 주술(10/21): 시전마다 영력 8 → 30/60/90에서 구슬 1/2/3, 궁극기 +30/60/90%, 주술 도술을 쓰면 모든 도술 남은 쿨 0.1초×구슬 감소
+    # 주술(10/21): 시전마다 영력 8 → 30/60/90에서 구슬 1/2/3, 궁극기의 강화 저주·폭발 +30/60/90%, 주술 도술을 쓰면 모든 도술 남은 쿨 0.1초×구슬 감소
     # 기만: 시전마다 눈물 1, 2개가 되면 방금 쓴 일반 도술 쿨 절반
     cg = 0; og = 0; tear = 0
     dash = 0; chain = -1
@@ -109,14 +114,15 @@ def sim(order, n, T=300, cast="flat", Kc=20, dot_rage=True):
                 else: cd[k] = t + POK[1]; dt = ct(POK[2]); gain(POK[3] * min(n, 5))
             else:
                 s = K[k]; e = EFF.get(k, {}); dt = ct(s["mot"]) + s["chg"] + (MELEE_GAP if k in NEAR else 0.0); h = t + dt
-                sb = 1.0
+                sb = 1.0; cb = 1.0
                 if mode == "강타":
                     sb = 1.10 if cg >= 100 else 1.07 if cg >= 66 else 1.03 if cg >= 33 else 1.0
                 if mode == "주술" and s.get("u"):
                     ob = 3 if og >= 90 else 2 if og >= 60 else 1 if og >= 30 else 0
-                    sb = 1 + 0.3 * ob
+                    cb = 1 + 0.3 * ob   # 10/21 툴팁: 구슬은 궁극기의 강화 저주·폭발 피해만 올림
+                curse = s.get("curse", 0.0) + s.get("burst", 0.0) * max(0, min(CURSE_HITS, n) - 1)
                 for i in tg(k):
-                    d = s["dmg"] * sb * (1.5 if k == "연속 쇄도" and t < chain else 1.0)
+                    d = s["dmg"] * sb * (1.5 if k == "연속 쇄도" and t < chain else 1.0) + curse * cb
                     if e.get("eb") and u.get("원소", -1) > t: d *= 1 + e["eb"]
                     if e.get("bc") and u.get(("한기", i), -1) > t: d *= 1 + e["bc"]
                     m = 1 + 0.10 * (u.get(("파쇄", i), -1) > t) + 0.10 * (u.get(("파열", i), -1) > t) + 0.10 * (u.get(("결계", i), -1) > t) + ARMOR * ((u.get(("방깎", i), -1) > t) + (u.get(("방깎2", i), -1) > t))

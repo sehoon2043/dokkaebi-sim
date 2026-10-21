@@ -96,6 +96,7 @@ SCENS = [
     ("공간 결계 모으기 효과가 없을 때", "mob", lambda: _set(M, "GATHER_BONUS", 1.0)),
     ("공간 결계 모으기 효과가 2배일 때", "mob", lambda: _set(M, "GATHER_BONUS", 1 + (M.GATHER_BONUS - 1) * 2)),
     ("몹이 3마리만 모일 때", "mob", _mob3),
+    ("신내림 강화 저주 폭발이 모인 몹 모두에게 들어갈 때", "mob", lambda: _set(M, "CURSE_HITS", 5)),
 ]
 
 

@@ -26,6 +26,10 @@ ARM = 0.05               # 방어력 10% 감소 = 피해 +5%로 가정
 BUFF_DMG = {"헌신/용맹의 기운": ("공격력 증가", 0.112, 10)}   # 10/21: 최후의 저항 피해 증가 삭제, 용맹의 기운은 공격력 +11.2%
 BUFF_CD = {"헌신/개전의 가호": 0.10}
 BUFF_CD_SEC = 10
+# 주술 궁극기 신내림(10/21 툴팁): 179.1% × 6회 + 약화 [강화 저주] 중첩당 7%/초(5초), 5중첩이면 반경 3m 최대 5명에게 358.2% 폭발 후 중첩 초기화.
+#   6회 타격 중 5번째에 폭발, 남은 1중첩이 5초 동안 7%씩 → 대상마다 (폭발, 지속 피해) = (358.2, 35)
+#   주술 신식 3단계 구슬 보너스(+30/60/90%)는 이 강화 저주·폭발에만 붙고 직접 피해에는 안 붙는다(툴팁)
+CURSE = {"신내림": (358.2, 7.0 * 5)}
 # 저격 궁극기(정조준): 덱에 있는 상태 이상 종류(출혈·화상·감전·약화) 하나마다 피해 +15%
 STATUS_BY = [["절명/환영 참격", "기동/급소 관통"], ["저격/폭발하는 화살", "파멸/화염구", "파멸/하늘의 심판"], ["파멸/번개 폭풍", "기동/일섬"],
              ["주술/살 날리기", "주술/부적 던지기"]]
@@ -104,7 +108,10 @@ def build(names, levels, overhead):
         m = {"id": k["id"], "n": n, "style": ST[k["st"]], "u": bool(k["u"]),
              "hits": sum((c["hits"] or 1) for c in nm["dc"]) or 1, "stacks": k["ms"] or 1}
         members.append(m)
-        dmg = total(k) * (1 + lvcoef(k, levels))
+        base = total(k) + sum(CURSE.get(n, ()))
+        if n in CURSE:
+            m["orb_frac"] = sum(CURSE[n]) / base   # 구슬 보너스가 붙는 몫(강화 저주·폭발)
+        dmg = base * (1 + lvcoef(k, levels))
         if dmg > 0 and nm["cd"] > 0:
             order.append(dict(m, damage=dmg, cd=nm["cd"], motion=(nm["pm"] or 0) + nm["m"] / 1000 + charge_time(n, nm) + overhead))
     return u, members, order
@@ -265,7 +272,7 @@ class Arrows(Shinsik):          # 저격: 1초에 영력 25 → 100마다 화살
             self.n, self.aim, self.spend = 0, end + 10, False
 
 
-class Orbs(Shinsik):            # 주술(10/21): 시전마다 영력 8(최대 100) → 30/60/90에서 구슬 1/2/3. 궁극기 +30/60/90%,
+class Orbs(Shinsik):            # 주술(10/21): 시전마다 영력 8(최대 100) → 30/60/90에서 구슬 1/2/3. 궁극기의 강화 저주·폭발 +30/60/90%(툴팁),
     def __init__(self):         # 구슬이 있을 때 주술 도술을 쓰면 궁극기 포함 모든 도술 남은 쿨 0.1초×구슬 감소
         self.g = 0
 
@@ -274,7 +281,8 @@ class Orbs(Shinsik):            # 주술(10/21): 시전마다 영력 8(최대 10
 
     def bonus(self, sim, sk):
         o = self.orbs()
-        return 1 + (0.90, 0.60, 0.30)[3 - o] if sk["u"] and o else 1.0
+        # 직접 피해에는 안 붙으므로 강화 저주·폭발 몫(orb_frac)만큼만 올린다
+        return 1 + (0.90, 0.60, 0.30)[3 - o] * sk.get("orb_frac", 0.0) if sk["u"] and o else 1.0
 
     def after(self, sim, sk, start, end):
         self.g = min(100, self.g + 8)

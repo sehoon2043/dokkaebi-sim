@@ -166,6 +166,28 @@ def model_checks():
     setup({"levels": p["levels"], "owned": {n: {"dp": 5} for n in ALL}})
     for k, f in fs.items():
         ok(f() >= base[k] - 1e-9, f"{k} 점수가 돌파를 올렸는데 줄어듦")
+    # 주술 신식 3단계(10/21 툴팁): 구슬은 신내림의 강화 저주·폭발 피해만 +30/60/90%, 직접 피해(179.1%×6)에는 안 붙음
+    setup({"levels": {}, "owned": {}})
+    ju = [n for n in ("부적 던지기", "살 날리기", "저주 내리기") if n in NAMES] + ["화염구", "낙뢰"]
+    u, mem, od = S.build(ju, F.LV, 0.0)
+    sin = next((v for v in od if v["n"] == "신내림"), None)
+    if ok(u == "신내림" and sin, "주술 3개 트리의 궁극기가 신내림이 아님"):
+        burst, dot = S.CURSE["신내림"]
+        ok(abs(sin["damage"] - (1074.6 + burst + dot)) < 0.5, f"신내림 피해에 강화 저주 폭발·지속 피해가 빠짐 ({sin['damage']:.1f})")
+        orb = S.Orbs()
+        orb.g = 90
+        want = 1 + 0.9 * (burst + dot) / (1074.6 + burst + dot)
+        ok(abs(orb.bonus(None, sin) - want) < 1e-6, f"구슬 3개 보너스가 신내림 직접 피해에도 붙음 ({orb.bonus(None, sin):.3f}, 기대 {want:.3f})")
+        big = dict(sin, n="대폭발", orb_frac=0.0)
+        big.pop("orb_frac")
+        ok(orb.bonus(None, big) == 1.0, "강화 저주가 없는 궁극기에 구슬 보너스가 붙음")
+    ok(abs(M.K["신내림"]["dmg"] - 1074.6) < 0.5 and M.K["신내림"].get("curse", 0) > 0, "몰이 계산: 신내림 직접 피해·강화 저주 분리가 안 됨")
+    o_sin = ["영혼 소용돌이", "부적 던지기", "살 날리기", "저주 내리기", "신내림", "화염구", "낙뢰", "번개 폭풍"]
+    a1 = M.w(o_sin)
+    M.CURSE_HITS = 5
+    a5 = M.w(o_sin)
+    M.CURSE_HITS = 1
+    ok(a5 > a1, "몰이 계산: 강화 저주 폭발이 여러 몹에게 들어가는 가정이 점수에 반영 안 됨")
     # 각성(br)은 캐릭터 능력치만 올리고 도술 피해·쿨은 그대로(10/09 사용자 확인, 사이트 안내문도 같음)
     setup({"levels": p["levels"], "owned": {n: {"br": 5} for n in ALL}})
     for k, f in fs.items():
@@ -201,9 +223,11 @@ def result_checks():
     ok(r["trees"], "작은 프로필 분석 결과에 트리가 없음")
     # 계산 방식 버전: 예전 방식 결과는 다시 계산 대상
     ok(r.get("engine") == A.ENGINE, "분석 결과에 계산 방식 버전(engine)이 없음")
-    ok(not A.stale({"updatedAt": "1", "resultFor": "1", "result": r}), "지금 방식으로 계산한 결과를 다시 계산하려 함")
-    ok(A.stale({"updatedAt": "1", "resultFor": "1", "result": {"trees": []}}), "예전 방식(engine 없음) 결과를 다시 계산하지 않음")
-    ok(A.stale({"updatedAt": "2", "resultFor": "1", "result": r}), "새로 저장한 프로필을 다시 계산하지 않음")
+    d = {"owned": {"사격": {}}}
+    ok(not A.stale({"updatedAt": "1", "resultFor": "1", "result": r, "data": d}), "지금 방식으로 계산한 결과를 다시 계산하려 함")
+    ok(A.stale({"updatedAt": "1", "resultFor": "1", "result": {"trees": []}, "data": d}), "예전 방식(engine 없음) 결과를 다시 계산하지 않음")
+    ok(A.stale({"updatedAt": "2", "resultFor": "1", "result": r, "data": d}), "새로 저장한 프로필을 다시 계산하지 않음")
+    ok(not A.stale({"updatedAt": "2", "resultFor": "", "result": None, "data": {}}), "배운 도술이 없는(비운) 프로필을 계산하려 함")
     ok(not [n for n in r["notes"] if "오류" in n], f"분석 메모에 오류: {r['notes']}")
     for t in r["trees"]:
         tree_checks(t, set(p["owned"]), "작은 프로필")

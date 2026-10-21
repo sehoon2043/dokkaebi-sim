@@ -13,7 +13,7 @@ import verify as VF
 
 TODAY = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 9 * 3600))
 # 계산 방식 버전: 계산식·보정값·데이터 해석을 바꾸면 올린다. 결과의 engine이 이것과 다르면 다시 저장하지 않아도 다음 실행 때 다시 계산
-ENGINE = "2026-10-22"
+ENGINE = "2026-10-22b"
 STYLE_ORDER = ["절명", "연타", "강타", "척살", "저격", "주술", "파멸", "강인", "기동", "헌신", "기만", "제압"]
 WORKERS = max(1, min(8, os.cpu_count() or 1))
 PROG = [None]   # 진행률 보고 함수 (pct, 단계 이름)
@@ -558,7 +558,10 @@ def call(url, params=None, body=None):
 
 
 def stale(x):
-    """다시 계산할 프로필: 저장 뒤 아직 계산 안 했거나, 예전 계산 방식(engine)으로 계산된 것"""
+    """다시 계산할 프로필: 저장 뒤 아직 계산 안 했거나, 예전 계산 방식(engine)으로 계산된 것.
+    배운 도술이 없는(비운) 프로필은 계산할 게 없어서 뺀다"""
+    if not (x.get("data") or {}).get("owned"):
+        return False
     res = x.get("result") or {}
     return not x.get("resultFor") or str(x["resultFor"]) != str(x["updatedAt"]) or res.get("engine") != ENGINE
 
