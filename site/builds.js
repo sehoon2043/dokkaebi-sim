@@ -21,15 +21,36 @@ function fmtPct(v){
   if (Math.abs(v) < 0.5) return "비슷";
   return (v > 0 ? "+" : "") + v.toFixed(1) + "%";
 }
-// 내 빌드·광역/단일 즉시 저장: 수첩 data의 prefStyle·mybuilds만 서버로(다른 수정은 저장 버튼으로)
-async function sendPick(){
+// 내 빌드·광역/단일 즉시 저장(pick): 사냥터 하나({g, build}) 또는 광역/단일({prefStyle})만 서버로. 다른 수정은 저장 버튼으로
+// 로그인 전·등록 전에 고른 것은 pendingPicks에 두고, 불러오기에 성공하면(adoptPicks) 서버 것에 덮어 보낸다. 등록은 저장 버튼(data에 함께 들어감)
+let authNew = false, pendingPicks = {}, pickQ = Promise.resolve();
+function sendPick(g){
+  const key = g || "_style";
   saveDraft();
-  if (!auth) { setStatus("닉네임을 불러오면 내 빌드가 서버에 저장돼요(지금은 이 브라우저에만)", "warn"); return; }
-  try {
-    const r = await api(null, {a: "pick", nick: auth.nick, pin: auth.pin || PIN, prefStyle: state.prefStyle, mybuilds: state.mybuilds});
-    if (r.ok) setStatus("내 빌드 저장됨 · 추천은 다시 계산하지 않아요", "ok");
-    else setStatus(ERR[r.err] || "내 빌드 저장 실패", "warn");
-  } catch (e) { setStatus("서버에 연결하지 못했어요. 잠시 뒤 다시 눌러 주세요", "warn"); }
+  if (!auth || authNew) {
+    pendingPicks[key] = true;
+    setStatus(auth ? "아직 등록 전이에요 · 저장을 누르면 등록되고 내 빌드도 함께 저장돼요" : "닉네임을 불러오면 내 빌드가 서버에 저장돼요(지금은 이 브라우저에만)", "warn");
+    return;
+  }
+  const nick = auth.nick, pin = auth.pin || PIN;
+  // 보낼 때의 값을 바로 떠서 순서대로 하나씩 보낸다(빠르게 여러 번 눌러도 마지막 것이 남게)
+  const body = g ? {a: "pick", nick, pin, g, build: state.mybuilds[g] || null} : {a: "pick", nick, pin, prefStyle: state.prefStyle};
+  pickQ = pickQ.then(async () => {
+    try {
+      const r = await api(null, body);
+      if (r.ok) setStatus("내 빌드 저장됨 · 추천은 다시 계산하지 않아요" + (dirty ? " · 다른 수정은 저장을 눌러야 반영돼요" : ""), "ok");
+      else setStatus(ERR[r.err] || "내 빌드 저장 실패", "warn");
+    } catch (e) { setStatus("서버에 연결하지 못했어요. 잠시 뒤 다시 눌러 주세요", "warn"); }
+  });
+}
+// 불러오기 성공 직후: 로그인 전·등록 전에 고른 것(pendingPicks)을 서버에서 받은 수첩에 덮어 보낸다
+function adoptPicks(prev){
+  const keys = Object.keys(pendingPicks);
+  pendingPicks = {}; authNew = false;
+  for (const k of keys) {
+    if (k === "_style") { state.prefStyle = prev.prefStyle; sendPick(); continue; }
+    if (prev.mybuilds && prev.mybuilds[k]) { state.mybuilds[k] = prev.mybuilds[k]; sendPick(k); }
+  }
 }
 function sameOrder(a, b){ return !!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]); }
 function pickBuild(g, st, t, from, src, commId){
@@ -38,7 +59,7 @@ function pickBuild(g, st, t, from, src, commId){
   if (from === "comm") b.commId = commId;
   if (prev.result) b.result = prev.result;
   state.mybuilds[g] = b;
-  sendPick(); renderBuilds();
+  sendPick(g); renderBuilds();
   if (typeof renderMyBuilds === "function") renderMyBuilds();
 }
 function pickBtn(g, st, t, from, src, commId){
@@ -130,7 +151,12 @@ function renderBuilds(){
 }
 // 내 수첩: 사냥터별 내 빌드 + 돌려 본 결과(물약·분당 엽전·분당 처치). 바꾸면 바로 저장(추천 다시 계산 없음)
 let mbT = null;
-function mbSave(){ clearTimeout(mbT); mbT = setTimeout(sendPick, 800); }
+function mbSave(g){
+  saveDraft();   // 바로 닫아도 이 브라우저에는 남게
+  clearTimeout(mbT);
+  const who = auth && auth.nick;
+  mbT = setTimeout(() => { if ((auth && auth.nick) === who) sendPick(g); }, 800);   // 그사이 다른 닉네임을 불러왔으면 보내지 않음
+}
 function renderMyBuilds(){
   const box = $("mb"); if (!box) return; box.textContent = "";
   const G = (RECS && RECS.grounds) || {}, gk = Object.keys(G);
@@ -161,7 +187,7 @@ function renderMyBuilds(){
       if (isFinite(c)) nr.coinPerMin = c;
       if (isFinite(k)) nr.killPerMin = k;
       if (Object.keys(nr).length > 1) b.result = nr; else delete b.result;
-      mbSave();
+      mbSave(g);
     };
     ps.addEventListener("change", upd); ci.addEventListener("input", upd); ki.addEventListener("input", upd);
     it.appendChild(res); list.appendChild(it);

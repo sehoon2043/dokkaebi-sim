@@ -6,6 +6,11 @@ src, out, api = sys.argv[1], sys.argv[2], sys.argv[3]
 h = open(src, encoding="utf-8").read()
 
 
+def js(v):
+    """<script> 안에 넣을 JSON: 외부 덱 게시판 글(덱 이름 등)에 </script>가 있어도 스크립트가 끊기지 않게 </ → <\\/"""
+    return json.dumps(v, ensure_ascii=False).replace("</", "<\\/")
+
+
 def rep(a, b, n=1):
     global h
     c = h.count(a)
@@ -107,7 +112,8 @@ async function api(params, body){
 }
 // 닉네임만으로 저장·불러오기(길드원 전용). 서버 호환을 위해 비밀번호 칸은 고정값을 보낸다
 const PIN = "0000";
-const ERR = {input: "닉네임을 입력하세요", size: "내용이 너무 길어요(메모·기록을 줄여 주세요)", pin: "이 닉네임은 다른 방식으로 등록돼 있어요. 다른 닉네임을 쓰세요"};
+const ERR = {input: "닉네임을 입력하세요", size: "내용이 너무 길어요(메모·기록을 줄여 주세요)", pin: "이 닉네임은 다른 방식으로 등록돼 있어요. 다른 닉네임을 쓰세요",
+  none: "아직 등록 전이에요 · 저장을 누르면 등록되고 내 빌드도 함께 저장돼요"};
 function cred(){
   const nick = $("nick").value.trim();
   if (!nick) { setStatus(ERR.input, "warn"); return null; }
@@ -124,10 +130,11 @@ async function load(c, keep){
   setStatus("서버에서 최신 정보를 불러오는 중… (화면은 마지막으로 받은 내용)");
   try {
     const r = await api({a: "load", nick: c.nick, pin: c.pin});
-    if (!r.ok && r.err === "none") { remember(c); setStatus("새 닉네임이에요. 정보를 입력하고 저장을 누르면 등록돼요", "ok"); return; }
+    if (!r.ok && r.err === "none") { remember(c); authNew = true; setStatus("새 닉네임이에요. 정보를 입력하고 저장을 누르면 등록돼요", "ok"); return; }
     if (!r.ok) { setStatus(ERR[r.err] || "불러오기 실패", "warn"); return; }
     remember(c);
-    if (!keep) { state = tidy(normalize(r.data || {})); dirty = false; renderAll(); } else dirty = true;
+    // 로그인 전·등록 전에 고른 내 빌드(pendingPicks)는 서버 수첩에 덮어 바로 보낸다
+    if (!keep) { const prev = state; state = tidy(normalize(r.data || {})); dirty = false; adoptPicks(prev); renderAll(); } else { dirty = true; adoptPicks(state); }
     applyResult(r.result);
     // 서버 응답이 느릴 때가 있어 마지막으로 받은 내용을 이 브라우저에 보관(다음에 열면 먼저 보여 줌)
     saveDraft(); try { localStorage.setItem(LSR, JSON.stringify({nick: c.nick, res: r.result || null})); } catch (e) {}
@@ -160,7 +167,7 @@ async function save(){
     if (!r.ok) {
       setStatus(ERR[r.err] || "저장 실패", "warn");
     } else {
-      remember(c); dirty = false; saveDraft();
+      remember(c); dirty = false; authNew = false; pendingPicks = {}; saveDraft();   // 저장한 data에 내 빌드도 들어감
       setStatus((r.created ? "등록 완료" : "저장됨") + " · 추천 트리 계산을 시작해요", "ok");
       watch(c, r.updatedAt, Date.now());
     }
@@ -399,7 +406,7 @@ j = h.index('\n', i)
 # 예시 추천 트리: tools/example_recs.json(실제 분석 결과 한 건)이 있으면 그것으로 바꿈(새 형식 포인트·추천 표시)
 EX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "example_recs.json")
 if os.path.exists(EX_PATH):
-    h = h[:i] + 'let RECS = ' + json.dumps(json.load(open(EX_PATH, encoding="utf-8")), ensure_ascii=False) + ';' + h[j:]
+    h = h[:i] + 'let RECS = ' + js(json.load(open(EX_PATH, encoding="utf-8"))) + ';' + h[j:]
     j = h.index('\n', i)
 h = h[:j] + '\nconst EXAMPLE_RECS = RECS;' + h[j:]
 rep('$("recBasis").textContent = "참고용 예시 · 계산 기준 캐릭터: " + RECS.basis + " · " + RECS.updated + " 계산. 강화 단계가 다르면 순위가 달라질 수 있습니다.";',
@@ -466,7 +473,7 @@ rep('  <section id="sec-logs" hidden>',
     '    <div id="mb"></div>\n  </section>\n\n  <section id="sec-logs" hidden>')
 rep('$("memo").value = state.memo; renderRight();', '$("memo").value = state.memo; renderRight(); renderMyBuilds();')
 rep('const LSM = "dosa-notebook-site-mt";',
-    'const ICONS = ' + json.dumps(json.load(open(os.path.join(SITE, "icons.json"), encoding="utf-8")), ensure_ascii=False) + ';\n'
+    'const ICONS = ' + js(json.load(open(os.path.join(SITE, "icons.json"), encoding="utf-8"))) + ';\n'
     + rd("builds.js") + 'const LSM = "dosa-notebook-site-mt";')
 h = h.replace("__API__", api)
 assert "localStorage.setItem(LS, JSON.stringify(state)); dirty = false; setStatus(\"저장됨 · 이 브라우저에만\"" not in h
