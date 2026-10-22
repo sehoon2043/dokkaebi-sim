@@ -12,6 +12,7 @@ import field as F
 import mob as M
 import verify as VF
 import sustain as SU
+import tiers as TI
 import gamedata
 
 S = F.S
@@ -120,6 +121,37 @@ def sustain_checks():
     ok(SU.rate(["회전 난격"], {"회전 난격": 30}, 300) == 0, "유지력: 표식 없는 조건부 회복이 들어감")
     for n in list(SU.UNCOND) + list(SU.COND) + [x for v in SU.MARK_SRC.values() for x in v]:
         ok(n in NAMES, f"유지력 표: 없는 도술 이름 '{n}'")
+
+
+# ---------- 2-2. 등급(생존·믹스·딜) 계산 1위 고르기 ----------
+def tier_checks():
+    c = lambda s, n, v: {"score": s, "order": [f"x{s}"], "ult": "u", "susN": n, "sus": v}
+    t = TI.pick_tiers([c(100, 0, 0), c(97, 1, 2), c(96, 1, 5), c(90, 1, 9), c(91, 2, 6), c(89, 3, 12)])
+    ok(t["딜"]["score"] == 100, "등급: 딜이 유지 0개 1위가 아님")
+    ok(t["믹스"]["sus"] == 5, "등급: 믹스가 −5% 안 유지력 최대가 아님")
+    ok(t["생존"]["sus"] == 6, "등급: 생존이 −10% 안 유지력 최대가 아님(89는 한도 밖)")
+    ok(abs(t["믹스"]["dmgPct"] + 4) < 1e-9, "등급: 딜 대비 %가 틀림")
+    t2 = TI.pick_tiers([c(100, 0, 0), c(80, 1, 3), c(70, 1, 9)])
+    ok(t2["믹스"]["score"] == 80 and t2["생존"] is None, "등급: 한도 안 후보가 없을 때 유지 1개 중 딜 1위가 아님")
+    t3 = TI.pick_tiers([c(90, 1, 3)])
+    ok(t3["딜"] is None and t3["믹스"]["dmgPct"] == 0, "등급: 딜 후보가 없을 때 기준이 전체 1위가 아님")
+    V = {"a": 10, "b": 8, "c": 6, "생명의 흐름": 0, "방패 밀기": 3, "u": 0}
+    sc = lambda o: sum(V[x] for x in o)
+    r = TI.add_sustain(["a", "b", "c", "u"], "u", "생명의 흐름", sc, lambda o: True)
+    ok(r and r[1] == ["생명의 흐름", "a", "b", "u"], f"등급: 힐이 맨 앞·가장 약한 칸 대신이 아님 {r}")
+    r = TI.add_sustain(["생명의 흐름", "a", "b", "c", "u"], "u", "방패 밀기", sc, lambda o: True)
+    ok(r and r[1] == ["생명의 흐름", "a", "b", "방패 밀기", "u"], f"등급: 보호막이 바꾼 칸 자리에 안 들어감 {r}")
+    ok(TI.add_sustain(["a", "u"], "u", "방패 밀기", sc, lambda o: False) is None, "등급: 규칙에 안 맞는 배치를 돌려줌")
+    # 후보 넓히기: 유지 0개 씨앗에서 1개·2개·3개(힐 2 + 보호막)까지
+    V.update({"d": 5, "생명의 축복": 0})
+    mk = lambda s, o, par: {"score": s, "order": o, "ult": par["ult"], "susN": SU.count(o), "sus": 0}
+    out = TI.expand([mk(sc(["a", "b", "c", "d", "u"]), ["a", "b", "c", "d", "u"], {"ult": "u"})], {"생명의 흐름", "생명의 축복", "방패 밀기"},
+                    lambda par, o: sc(o), lambda par, o: True, mk)
+    ns = sorted({c["susN"] for c in out})
+    ok(ns == [0, 1, 2, 3], f"등급: 후보 넓히기 유지 개수 {ns}")
+    three = [c["order"] for c in out if c["susN"] == 3]
+    ok(three and all(o[:2] in (["생명의 흐름", "생명의 축복"], ["생명의 축복", "생명의 흐름"]) for o in three), f"등급: 힐 2개가 맨 앞이 아님 {three}")
+    ok(len({tuple(c["order"]) for c in out}) == len(out), "등급: 같은 배치가 두 번 들어감")
 
 
 # ---------- 3. 계산 모델 성질 ----------
@@ -346,7 +378,7 @@ def measure_checks():
 if __name__ == "__main__":
     # --only 이름: 그 섹션만 실행(예: --only 유지력)
     only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None
-    for name, fn in (("데이터", data_checks), ("효과 표 이름", name_checks), ("유지력", sustain_checks), ("계산 모델", model_checks),
+    for name, fn in (("데이터", data_checks), ("효과 표 이름", name_checks), ("유지력", sustain_checks), ("등급", tier_checks), ("계산 모델", model_checks),
                      ("실측 재현", measure_checks), ("결과 형식", result_checks)):
         if name == "결과 형식" and "--quick" in sys.argv:
             continue
