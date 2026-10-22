@@ -5,6 +5,7 @@
 import copy
 import field as F
 import mob as M
+import sustain as SU
 
 S = F.S
 FLIP = 0.02     # 가정을 바꿨을 때 이만큼 넘게 좋아지는 조합이 있으면 1위가 바뀐 것으로 본다
@@ -190,15 +191,16 @@ def _best(sp, o, u, nb, arrange):
     return base, (best[0] / base - 1, best[1], best[2], best[3])
 
 
-def polish(tid, owned, o, u, arrange, reopt, rounds=3):
-    """탐색 보강: 한 칸 바꾼 조합 중 더 좋은 게 있으면 바꾸고 순서를 다시 맞춘다. (점수, 순서, 바꾼 기록)"""
+def polish(tid, owned, o, u, arrange, reopt, rounds=3, cap=None):
+    """탐색 보강: 한 칸 바꾼 조합 중 더 좋은 게 있으면 바꾸고 순서를 다시 맞춘다. (점수, 순서, 바꾼 기록)
+    cap: 유지 도술(sustain.count) 개수 상한(딜 카드는 0)"""
     sp = spec(tid, owned)
     if not sp or not _ok(o, u):
         return None
     log = []
     b = score(sp, o, u, arrange)
     for _ in range(rounds):
-        nb = neighbors(sp, o, u)
+        nb = [x for x in neighbors(sp, o, u) if cap is None or SU.count(x[2]) <= cap]
         _, best = _best(sp, o, u, nb, arrange)
         if not best or best[0] <= 1e-4:
             break

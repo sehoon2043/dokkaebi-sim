@@ -16,7 +16,7 @@ import decks as DK
 
 TODAY = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 9 * 3600))
 # 계산 방식 버전: 계산식·보정값·데이터 해석을 바꾸면 올린다. 결과의 engine이 이것과 다르면 다시 저장하지 않아도 다음 실행 때 다시 계산
-ENGINE = "2026-10-22f"
+ENGINE = "2026-10-22g"
 # 정기 실행(9시·21시) 때 이 시간보다 오래된 결과는 다시 계산(새 커뮤니티 덱 반영). 실행 간격이 12시간이고
 # 결과 기록이 실행 시작보다 늦어서 12시간으로 하면 한 번씩 건너뛰므로 11시간
 REFRESH_H = 11
@@ -314,7 +314,14 @@ def _job(job, owned):
         b0, c, o, _ = top("jhunt_h" if heal else "jhunt", me, owned, "field", 0.7)
         return (b0, c, o, F.kills(c, o, 0.4), F.kills(c, o, 1.0))
     if kind == "mob0":   # 사냥터 딜 카드용: 유지 도술 없는 몰이
-        return mob_search(owned, 0, cap=0)
+        r = mob_search(owned, 0, cap=0)
+        if r:
+            # 10/22: 다듬기가 없으면 근거리 도술을 원거리로 바꾸는 교체를 놓침(잊힌 +19%)
+            b, o, ult = r
+            p = VF.polish("mob", owned, o, ult, arrange, lambda t: M.opt(t, 200), cap=0)
+            if p and p[2]:
+                r = (p[0], p[1], ult)
+        return r
     if kind == "boss":
         bs = F.boss_search(owned, seeds=5)
         if not bs:
