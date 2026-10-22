@@ -34,7 +34,7 @@ function sendPick(g){
   }
   const nick = auth.nick, pin = auth.pin || PIN;
   // 보낼 때의 값을 바로 떠서 순서대로 하나씩 보낸다(빠르게 여러 번 눌러도 마지막 것이 남게)
-  const body = g ? {a: "pick", nick, pin, g, build: state.mybuilds[g] || null} : {a: "pick", nick, pin, prefStyle: state.prefStyle};
+  const body = g ? {a: "pick", nick, pin, g, build: state.mybuilds[g] || null} : {a: "pick", nick, pin, prefStyle: state.prefStyle, at: state.prefStyleAt};
   pickQ = pickQ.then(async () => {
     try {
       const r = await api(null, body);
@@ -48,7 +48,7 @@ function adoptPicks(prev){
   const keys = Object.keys(pendingPicks);
   pendingPicks = {}; authNew = false;
   for (const k of keys) {
-    if (k === "_style") { state.prefStyle = prev.prefStyle; sendPick(); continue; }
+    if (k === "_style") { state.prefStyle = prev.prefStyle; state.prefStyleAt = prev.prefStyleAt; sendPick(); continue; }
     if (prev.mybuilds && prev.mybuilds[k]) { state.mybuilds[k] = prev.mybuilds[k]; sendPick(k); }
   }
 }
@@ -133,7 +133,7 @@ function renderBuilds(){
     const seg = el("div", {class:"bd-seg", role:"group", "aria-label":"광역/단일"});
     for (const s of styles) {
       const b = el("button", {type:"button", "aria-pressed": s === st ? "true" : "false"}, s);
-      b.addEventListener("click", () => { if (state.prefStyle === s) return; state.prefStyle = s; sendPick(); renderBuilds(); });
+      b.addEventListener("click", () => { if (state.prefStyle === s) return; state.prefStyle = s; state.prefStyleAt = Date.now(); sendPick(); renderBuilds(); });
       seg.appendChild(b);
     }
     box.appendChild(seg);
@@ -150,12 +150,12 @@ function renderBuilds(){
   }
 }
 // 내 수첩: 사냥터별 내 빌드 + 돌려 본 결과(물약·분당 엽전·분당 처치). 바꾸면 바로 저장(추천 다시 계산 없음)
-let mbT = null;
+const mbT = {};   // 사냥터마다 따로(다른 사냥터 입력이 앞의 전송을 취소하지 않게)
 function mbSave(g){
   saveDraft();   // 바로 닫아도 이 브라우저에는 남게
-  clearTimeout(mbT);
+  clearTimeout(mbT[g]);
   const who = auth && auth.nick;
-  mbT = setTimeout(() => { if ((auth && auth.nick) === who) sendPick(g); }, 800);   // 그사이 다른 닉네임을 불러왔으면 보내지 않음
+  mbT[g] = setTimeout(() => { if ((auth && auth.nick) === who) sendPick(g); }, 800);   // 그사이 다른 닉네임을 불러왔으면 보내지 않음
 }
 function renderMyBuilds(){
   const box = $("mb"); if (!box) return; box.textContent = "";

@@ -4,7 +4,8 @@
 //   GET  ?a=status&nick=           추천 트리 계산 상태(저장 시각·결과 시각·진행률)
 //   POST {a:"progress", key, nick, updatedAt, pct, stage}  분석 진행률 보고(관리자)
 //   GET  ?a=data&name=&key=  /  POST {a:"setdata", key, name, value}   계산용 비공개 게임 데이터(관리자)
-//   GET  ?a=pending|all&key=       분석할 프로필(관리자)
+//   GET  ?a=pending|all&key=       분석할 프로필(관리자, 결과는 계산 버전만)
+//   GET  ?a=dump&key=              백업용 전체(관리자, 결과 전체 + 내 빌드 해시 picks)
 //   POST {a:"save", nick, pin, data, create}
 //   POST {a:"pick", nick, pin, g?, build?, prefStyle?}   내 빌드·광역/단일 즉시 저장(재계산 없음, b:<닉네임> 해시. lib/pick.js)
 //   POST {a:"result", key, nick, updatedAt, result}   분석 결과 기록(관리자)
@@ -14,7 +15,7 @@
 //           b:<닉네임> 내 빌드 해시(사냥터 키 → 빌드 JSON, _style → 광역/단일). load·all은 이것을 data에 합쳐 돌려준다
 import { Redis } from "@upstash/redis";
 import { createHash } from "node:crypto";
-import { pickOps, mergePicks, forAll, MAX_FIELDS } from "../lib/pick.js";
+import { pickOps, mergePicks, forAll, importPlan } from "../lib/pick.js";
 
 const MAX_DATA = 45000;
 const MEMBERS_HIDE = ["테스트"];
@@ -153,6 +154,19 @@ async function handleGet(p) {
     const value = await db().get("d:" + String(p.name || ""));
     return out(value === null ? { ok: false, err: "none" } : { ok: true, value });
   }
+  if (p.a === "dump") {   // 백업용 전체(관리자): 결과 전체 + 내 빌드 해시 원본(picks). import로 그대로 되돌릴 수 있음
+    if (!isAdmin(p.key)) {
+      return out({ ok: false, err: "key" });
+    }
+    const profs = await getMany("p:");
+    let picks = [];
+    if (profs.length) {
+      const pl = db().pipeline();
+      profs.forEach((x) => pl.hgetall("b:" + x.nick));
+      picks = await pl.exec();
+    }
+    return out({ ok: true, list: profs.map((x, i) => ({ ...pub(x), pinHash: x.pinHash, picks: picks[i] || null })) });
+  }
   if (p.a === "pending" || p.a === "all") {
     if (!isAdmin(p.key)) {
       return out({ ok: false, err: "key" });
@@ -188,6 +202,7 @@ async function handlePost(b) {
       }
       prof = { nick, pinHash: hash(nick, pin), result: null, resultFor: "", resultAt: "" };
       created = true;
+      await db().del("b:" + nick);   // 지운 닉네임을 다른 사람이 다시 쓰면 앞사람 빌드가 섞이지 않게
     } else if (prof.pinHash !== hash(nick, pin)) {
       return out({ ok: false, err: "pin" });
     }
@@ -220,14 +235,7 @@ async function handlePost(b) {
     if (prof.pinHash !== hash(nick, pin)) {
       return out({ ok: false, err: "pin" });
     }
-    const key = "b:" + nick;
-    const fresh = Object.keys(ops.set).filter((k) => k !== "_style");
-    if (fresh.length) {
-      const [n, has] = await Promise.all([db().hlen(key), db().hexists(key, fresh[0])]);
-      if (!has && n >= MAX_FIELDS) {
-        return out({ ok: false, err: "size" });
-      }
-    }
+    const key = "b:" + nick;   // 필드는 사냥터 키 목록(GROUND_KEYS)과 _style뿐이라 크기가 정해져 있음
     const pl = db().pipeline();
     if (Object.keys(ops.set).length) {
       pl.hset(key, ops.set);
@@ -298,10 +306,13 @@ async function handlePost(b) {
       if (!nick) {
         continue;
       }
-      await putProfile({
-        nick, pinHash: x.pinHash || hash(nick, "0000"), data: x.data || {}, updatedAt: String(x.updatedAt || ""),
-        result: x.result || null, resultFor: String(x.resultFor || ""), resultAt: String(x.resultAt || ""),
-      });
+      // 결과가 줄어든 백업(트리 없음)이면 다시 계산되게, 내 빌드 해시는 비우거나 함께 넘긴 picks로 되살림(기록 비우기 때 예전 빌드가 남지 않게)
+      const plan = importPlan(x);
+      await putProfile({ nick, pinHash: x.pinHash || hash(nick, "0000"), ...plan.prof });
+      await db().del("b:" + nick);
+      if (plan.picks) {
+        await db().hset("b:" + nick, plan.picks);
+      }
       done.push(nick);
     }
     return out({ ok: true, done });
