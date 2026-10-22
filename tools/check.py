@@ -13,6 +13,7 @@ import mob as M
 import verify as VF
 import sustain as SU
 import tiers as TI
+import decks as DK
 import gamedata
 
 S = F.S
@@ -152,6 +153,47 @@ def tier_checks():
     three = [c["order"] for c in out if c["susN"] == 3]
     ok(three and all(o[:2] in (["생명의 흐름", "생명의 축복"], ["생명의 축복", "생명의 흐름"]) for o in three), f"등급: 힐 2개가 맨 앞이 아님 {three}")
     ok(len({tuple(c["order"]) for c in out}) == len(out), "등급: 같은 배치가 두 번 들어감")
+
+
+# ---------- 2-3. 커뮤니티 덱 분류·순서 ----------
+AOE4 = ["화염구", "낙뢰", "번개 폭풍", "연쇄 번개"]
+ONE4 = ["사격", "꿰뚫는 저격", "이중 사격", "일점 저격"]
+
+
+def fake_deck(i, name, slots, ult="대폭발", body="", at=None, likes=0, dislikes=None):
+    sl = [{"id": j, "name": n, "style": STYLE_OF.get(n, "")} for j, n in enumerate(slots)]
+    return {"id": i, "name": name, "body": body, "slots": sl, "order": sl, "ult": {"name": ult} if ult else None, "ult_at": 3,
+            "likes": likes, "dislikes": dislikes, "created_at": DK.PATCH_AT + 1 if at is None else at, "author": {"name": "작성자"}}
+
+
+def deck_checks():
+    owned = set(AOE4 + ONE4)
+    d = DK.parse(fake_deck(1, "215k~260k 몰이", AOE4 + ONE4))
+    ok(d and DK.grounds_of(d) == ["well", "mine"], f"덱: '215k~260k'가 우물·폐광 둘 다가 아님 {d and DK.grounds_of(d)}")
+    ok(d and d["order"].index("대폭발") == 3, "덱: 궁극기가 ult_at 위치에 안 들어감")
+    ok(DK.style_of(d) == "광역", "덱: 범위 도술 4개가 광역이 아님")
+    ok(DK.style_of(DK.parse(fake_deck(2, "x", AOE4[:3] + ONE4 + ["요혼격"]))) == "단일", "덱: 범위 도술 3개가 단일이 아님")
+    ok(DK.tier_of(DK.parse(fake_deck(3, "x", ["생명의 흐름", "방패 밀기"] + AOE4[:3] + ONE4[:3]))) == "생존", "덱: 흐름+방패 밀기가 생존이 아님")
+    ok(DK.tier_of(DK.parse(fake_deck(4, "x", ["생명의 흐름"] + AOE4 + ONE4[:3]))) == "믹스", "덱: 흐름만이 믹스가 아님")
+    ok(DK.tier_of(d) == "딜", "덱: 유지 도술 없는 덱이 딜이 아님")
+    ok(DK.parse(fake_deck(5, "x", AOE4 + ONE4, ult=None)) is None, "덱: 궁극기 없는 덱을 받아들임")
+    ok(DK.parse(fake_deck(6, "x", AOE4 + ONE4[:3] + ["없는도술"])) is None, "덱: 모르는 도술이 든 덱을 받아들임")
+    ok(DK.parse(fake_deck(7, "x", [])) is None, "덱: 칸이 빈 덱을 받아들임")
+    ok(DK.video({"body": "영상 https://www.youtube.com/watch?v=abc 참고"}) == "https://www.youtube.com/watch?v=abc", "덱: 영상 링크를 못 찾음")
+    ok(DK.video({"body": "링크 없음"}) is None, "덱: 없는 영상 링크를 만듦")
+    raw = [fake_deck(10, "우물 덱 A", AOE4 + ONE4, likes=50), fake_deck(11, "우물 덱 B", AOE4 + ONE4[:3] + ["요혼격"], likes=10),
+           fake_deck(12, "사냥터 없음", AOE4 + ONE4, likes=99), fake_deck(13, "우물 옛날 덱", AOE4 + ONE4, at=DK.PATCH_AT - 1, likes=999),
+           fake_deck(14, "보스 덱", AOE4 + ONE4, likes=5), fake_deck(15, "우물 덱 C", AOE4 + ONE4, likes=30, dislikes=25),
+           fake_deck(16, "우물 깨진 덱", AOE4 + ONE4, ult=None), fake_deck(17, "우물 덱 D", AOE4 + ONE4, likes=0)]
+    placed, un, info = DK.classify(raw, owned)
+    well = placed.get("well", {}).get("광역", {}).get("딜", [])
+    # 11은 요혼격을 안 배워서 뒤로, 15는 추천 30·비추천 25(=−20) → 추천 0인 17보다 뒤
+    ok(well == [10, 17, 15, 11], f"덱: 우물 광역 딜 순서가 다름 {well}")
+    ok(un == [12], f"덱: 사냥터 미지정 목록이 다름 {un}")
+    ok(13 not in info and 16 not in info, "덱: 패치 전 덱이나 깨진 덱이 남음")
+    ok(placed.get("boss", {}).get("보스", {}).get("딜") == [14], f"덱: 보스 덱이 보스 칸에 없음 {placed.get('boss')}")
+    ok(info[11]["missing"] == ["요혼격"], f"덱: 안 배운 도술 표시가 다름 {info[11]['missing']}")
+    ok(all(13 not in v for g in placed.values() for s in g.values() for v in s.values()), "덱: 패치 전 덱이 분류됨")
 
 
 # ---------- 3. 계산 모델 성질 ----------
@@ -378,7 +420,7 @@ def measure_checks():
 if __name__ == "__main__":
     # --only 이름: 그 섹션만 실행(예: --only 유지력)
     only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None
-    for name, fn in (("데이터", data_checks), ("효과 표 이름", name_checks), ("유지력", sustain_checks), ("등급", tier_checks), ("계산 모델", model_checks),
+    for name, fn in (("데이터", data_checks), ("효과 표 이름", name_checks), ("유지력", sustain_checks), ("등급", tier_checks), ("커뮤니티 덱", deck_checks), ("계산 모델", model_checks),
                      ("실측 재현", measure_checks), ("결과 형식", result_checks)):
         if name == "결과 형식" and "--quick" in sys.argv:
             continue
