@@ -51,6 +51,10 @@ VULN = {"내려찍기": [("파열", "받피5a")], "내려치기": [("파열", "�
 VULN_GAIN = {"받피5a": 0.10, "받피5b": 0.10}   # 10/21: 파열·파쇄 받는 피해 5% → 10%
 ARMOR_SRC = {"연쇄 타격", "영혼 소용돌이"}   # 방어력 10% 감소 5초
 # 차지 도술 단계 수(10/21 공지). 피해 계수는 최대 차지 기준이라 차지 시간(cm × (단계 - 1))을 동작 시간에 더한다
+# 연계 도술: 시전 후 같은 도술을 한 번 더 쓰는 두 번째 단계(데이터에는 첫 단계만 있음). (첫 단계 대비 피해 비율, 동작 ms, 타수)
+#   묵직한 주먹 10/22 툴팁: 두 번째 단계 '다시 접근해' 65.8% × 2회(재사용 1초) = 첫 단계와 같음. 허수아비 1회당 피해 ÷ 계수가 다른 0강 도술과 맞는 것으로 확인
+#   (은신·쌍검 가르기·월식·연속 쇄도·사슬 묶기도 '연계 도술'이지만 두 번째 단계 수치 미확인)
+CHAIN = {"묵직한 주먹": (1.0, 250, 2)}
 CHARGE_STAGES = {"크게 베기": 2, "연속 충격": 3, "검기 날리기": 4, "대검 강타": 4, "검기 폭발": 4, "천벌": 4, "일점 저격": 3}
 
 
@@ -69,7 +73,11 @@ def lvcoef(k, levels):
 
 
 def total(k):
-    """도술 1회 총 피해 계수(0강)"""
+    """도술 1회 총 피해 계수(0강, 연계 두 번째 단계 포함)"""
+    return _total1(k) * (1 + CHAIN.get(k["n"], (0,))[0])
+
+
+def _total1(k):
     n = k["num"]
     if n["total"]:
         return n["total"]
@@ -106,14 +114,14 @@ def build(names, levels, overhead):
         k = BY[n]
         nm = k["num"]
         m = {"id": k["id"], "n": n, "style": ST[k["st"]], "u": bool(k["u"]),
-             "hits": sum((c["hits"] or 1) for c in nm["dc"]) or 1, "stacks": k["ms"] or 1}
+             "hits": (sum((c["hits"] or 1) for c in nm["dc"]) or 1) + CHAIN.get(n, (0, 0, 0))[2], "stacks": k["ms"] or 1}
         members.append(m)
         base = total(k) + sum(CURSE.get(n, ()))
         if n in CURSE:
             m["orb_frac"] = sum(CURSE[n]) / base   # 구슬 보너스가 붙는 몫(강화 저주·폭발)
         dmg = base * (1 + lvcoef(k, levels))
         if dmg > 0 and nm["cd"] > 0:
-            order.append(dict(m, damage=dmg, cd=nm["cd"], motion=(nm["pm"] or 0) + nm["m"] / 1000 + charge_time(n, nm) + overhead))
+            order.append(dict(m, damage=dmg, cd=nm["cd"], motion=(nm["pm"] or 0) + (nm["m"] + CHAIN.get(n, (0, 0))[1]) / 1000 + charge_time(n, nm) + overhead))
     return u, members, order
 
 

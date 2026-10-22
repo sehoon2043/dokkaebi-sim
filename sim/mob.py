@@ -2,7 +2,7 @@
 # 계수·쿨은 data/skills.json(10/21 패치 공지·인게임 툴팁 0강) × (1 + 스타일 강화 계수)
 import json, os, random
 import transcend as TR
-from timeline import charge_time, CURSE
+from timeline import charge_time, CURSE, CHAIN
 _D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
 D = json.load(open(os.path.join(_D, "skills.json"), encoding="utf-8"))
 TGT = json.load(open(os.path.join(_D, "targets.json"), encoding="utf-8"))
@@ -32,6 +32,10 @@ CURSE_HITS = 1
 K = {}; POK = None; BIG = None
 
 def total(k):
+    """1회 총 계수(연계 두 번째 단계 포함, timeline.CHAIN)"""
+    return _total1(k) * (1 + CHAIN.get(k["n"], (0,))[0])
+
+def _total1(k):
     n = k["num"]; t = n.get("total")
     if t: return t
     if n.get("dc"):
@@ -46,11 +50,11 @@ def setup(levels, steps=None):
     for k in D["skills"]:
         if k["u"] or not k.get("num"): continue
         st = ST[k["st"]]; n = k["num"]
-        hits = sum((d["hits"] or 1) for d in n.get("dc") or []) or 1
+        hits = (sum((d["hits"] or 1) for d in n.get("dc") or []) or 1) + CHAIN.get(k["n"], (0, 0, 0))[2]
         dmg = 0.0 if k["n"] in HEALS else total(k) * mult(st)
         cd0 = n["cd"] or 30.0
         cd, tm = TR.effect(k["n"], (steps or {}).get(k["n"], 0), cd0)
-        K[k["n"]] = {"style": st, "dmg": dmg * tm, "cd": cd, "mot": (n.get("m") or 500) / 1000, "hits": hits, "chg": charge_time(k["n"], n)}
+        K[k["n"]] = {"style": st, "dmg": dmg * tm, "cd": cd, "mot": ((n.get("m") or 500) + CHAIN.get(k["n"], (0, 0))[1]) / 1000, "hits": hits, "chg": charge_time(k["n"], n)}
         if TGT.get(k["n"], 1) > 1: AOE.add(k["n"])
     # 폭주·대폭발 외 궁극기는 일반 도술처럼 근사(쿨·피해·대상 수만)
     for k in D["skills"]:
