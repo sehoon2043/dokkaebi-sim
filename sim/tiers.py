@@ -1,6 +1,7 @@
 # 등급(생존·믹스·딜)별 계산 1위: 딜 손해 한도 안에서 유지력(초당 회복·보호막)이 가장 큰 조합
-#   딜 = 유지 도술 0개 중 딜 1위 / 믹스 = 1개, 딜 카드 대비 −5% 안 / 생존 = 2개 이상, −10% 안
-#   한도 안 후보가 없으면 그 개수 중 딜 1위. 후보(Cand) = {score, order, ult, susN, sus, ...호출자가 붙인 값}
+#   딜 = 유지 도술 0개 중 딜 1위 / 믹스 = 1개, 딜 카드 대비 −5% 안(없으면 1개 중 딜 1위) / 생존 = 아래. 후보(Cand) = {score, order, ult, susN, sus, ...호출자가 붙인 값}
+#   생존 카드는 계산 트리 2개(10/22 사용자 결정): 생존 우선 = 유지 2개 이상 후보 중 그 딜 1위 대비 −10% 안에서 유지력 최대,
+#   딜 우선(생존2) = 유지 2개 이상 중 딜 1위(생존 우선과 같으면 없음)
 import sustain as SU
 
 HEALS = {"생명의 축복", "생명의 흐름"}
@@ -68,13 +69,16 @@ def pick_tiers(cands):
     deal = max((c for c in cands if c["susN"] == 0), key=lambda c: c["score"], default=None)
     ref = deal["score"] if deal else max((c["score"] for c in cands), default=None)
     res = {"딜": deal}
-    for tier, cond in (("믹스", lambda n: n == 1), ("생존", lambda n: n >= 2)):
-        pool = [c for c in cands if cond(c["susN"])]
-        inwin = [c for c in pool if c["score"] >= ref * WIN[tier]]
-        if inwin:
-            res[tier] = max(inwin, key=lambda c: (c["sus"], c["score"]))
-        else:
-            res[tier] = max(pool, key=lambda c: c["score"], default=None)
+    pool = [c for c in cands if c["susN"] == 1]
+    inwin = [c for c in pool if c["score"] >= ref * WIN["믹스"]]
+    if inwin:
+        res["믹스"] = max(inwin, key=lambda c: (c["sus"], c["score"]))
+    else:
+        res["믹스"] = max(pool, key=lambda c: c["score"], default=None)
+    pool = [c for c in cands if c["susN"] >= 2]
+    top = max(pool, key=lambda c: c["score"], default=None)
+    res["생존"] = top and max((c for c in pool if c["score"] >= top["score"] * WIN["생존"]), key=lambda c: (c["sus"], c["score"]))
+    res["생존2"] = top if top and top["order"] != res["생존"]["order"] else None
     for tier, c in res.items():
         if c:
             res[tier] = dict(c, dmgPct=(c["score"] / ref - 1) * 100)

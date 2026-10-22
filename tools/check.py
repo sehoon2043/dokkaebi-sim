@@ -135,10 +135,15 @@ def tier_checks():
     t = TI.pick_tiers([c(100, 0, 0), c(97, 1, 2), c(96, 1, 5), c(90, 1, 9), c(91, 2, 6), c(89, 3, 12)])
     ok(t["딜"]["score"] == 100, "등급: 딜이 유지 0개 1위가 아님")
     ok(t["믹스"]["sus"] == 5, "등급: 믹스가 −5% 안 유지력 최대가 아님")
-    ok(t["생존"]["sus"] == 6, "등급: 생존이 −10% 안 유지력 최대가 아님(89는 한도 밖)")
+    ok(t["생존"]["sus"] == 12, "등급: 생존 우선이 '유지 2개 이상 딜 1위(91) 대비 −10% 안' 유지력 최대(89)가 아님")
+    ok(t["생존2"] and t["생존2"]["score"] == 91, "등급: 생존 카드 딜 우선이 유지 2개 이상 중 딜 1위가 아님")
+    t4 = TI.pick_tiers([c(100, 0, 0), c(75, 2, 6), c(70, 2, 9), c(60, 2, 20)])
+    ok(t4["생존"]["sus"] == 9 and t4["생존2"]["score"] == 75, "등급: 딜 카드보다 많이 낮아도 생존 우선(75 대비 −10% 안 유지력 최대)·딜 우선을 고르지 않음")
+    t5 = TI.pick_tiers([c(100, 0, 0), c(75, 2, 9), c(70, 2, 6)])
+    ok(t5["생존"]["score"] == 75 and t5["생존2"] is None, "등급: 생존 우선과 딜 우선이 같은데 두 번 보여 줌")
     ok(abs(t["믹스"]["dmgPct"] + 4) < 1e-9, "등급: 딜 대비 %가 틀림")
     t2 = TI.pick_tiers([c(100, 0, 0), c(80, 1, 3), c(70, 1, 9)])
-    ok(t2["믹스"]["score"] == 80 and t2["생존"] is None, "등급: 한도 안 후보가 없을 때 유지 1개 중 딜 1위가 아님")
+    ok(t2["믹스"]["score"] == 80 and t2["생존"] is None and t2["생존2"] is None, "등급: 한도 안 후보가 없을 때 유지 1개 중 딜 1위가 아님")
     t3 = TI.pick_tiers([c(90, 1, 3)])
     ok(t3["딜"] is None and t3["믹스"]["dmgPct"] == 0, "등급: 딜 후보가 없을 때 기준이 전체 1위가 아님")
     V = {"a": 10, "b": 8, "c": 6, "생명의 흐름": 0, "방패 밀기": 3, "u": 0}
@@ -392,6 +397,14 @@ def result_checks():
                     ok(want, f"{gk}/{stn}/{tn}: 유지 도술 {cl['susN']}개")
                     hs = [x for x in cl["order"] if x in F.HEALS]
                     ok(cl["order"][:len(hs)] == hs, f"{gk}/{stn}/{tn}: 힐이 맨 앞이 아님")
+                c2 = card.get("calc2")   # 생존 카드의 딜 우선 트리
+                if c2:
+                    ok(tn == "생존" and cl, f"{gk}/{stn}/{tn}: 딜 우선 트리는 생존 카드에만(생존 우선과 함께)")
+                    tree_checks({"id": f"{gk}_{tn}2", **c2, "stat": ""}, set(p["owned"]), "등급 카드")
+                    ok(c2["susN"] >= 2 and c2["order"] != cl["order"], f"{gk}/{stn}/{tn}: 딜 우선 트리가 유지 2개 미만이거나 생존 우선과 같음")
+                    ok(c2["score"] >= cl["score"] and c2["sus"] <= cl["sus"], f"{gk}/{stn}/{tn}: 딜 우선이 생존 우선보다 딜이 낮거나 유지력이 큼")
+                    hs = [x for x in c2["order"] if x in F.HEALS]
+                    ok(c2["order"][:len(hs)] == hs, f"{gk}/{stn}/{tn}: 딜 우선 트리 힐이 맨 앞이 아님")
                 for e in card["comm"]:
                     ok(str(e["id"]) in r["decks"], f"{gk}/{stn}/{tn}: decks에 없는 덱 {e['id']}")
     if g:

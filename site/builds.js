@@ -69,9 +69,15 @@ function pickBtn(g, st, t, from, src, commId){
   b.addEventListener("click", () => pickBuild(g, st, t, from, src, commId));
   return b;
 }
-function calcCand(g, st, t, c){
+// from: "calc"(계산 1위) 또는 "calc2"(생존 카드의 두 번째 계산 트리 = 딜 우선). 생존 카드의 calc는 생존 우선
+function calcName(g, t, from){
+  if (from === "calc2") return "사이트 계산 · 딜 우선";
+  return t === "생존" && g !== "boss" ? "사이트 계산 · 생존 우선" : "사이트 계산 1위";
+}
+function calcCand(g, st, t, c, from){
+  from = from || "calc";
   const d = el("div", {class:"bd-cand"});
-  d.appendChild(el("div", {class:"nm"}, "사이트 계산 1위 · " + c.label));
+  d.appendChild(el("div", {class:"nm"}, calcName(g, t, from) + " · " + c.label));
   const kind = {mob: "몰이 점수", field: "처치 속도", boss: "보스 점수"}[c.kind] || "딜";
   const parts = [];
   if (g === "boss") parts.push("보스 트리 1위");
@@ -80,7 +86,7 @@ function calcCand(g, st, t, c){
   parts.push(c.sus > 0 ? "유지력: 초당 공격력의 " + c.sus.toFixed(1) + "%" : "회복·보호막 없음");
   d.appendChild(el("div", {class:"meta"}, parts.join(" · ")));
   d.appendChild(iconRow(c.order, c.ult));
-  d.appendChild(pickBtn(g, st, t, "calc", c));
+  d.appendChild(pickBtn(g, st, t, from, c));
   return d;
 }
 function commCand(g, st, t, e, extra){
@@ -103,6 +109,7 @@ function card(g, st, t, c){
   if (mb && mb.tier === t && mb.style === st) h.appendChild(el("span", {class:"bd-badge"}, "내 빌드"));
   box.appendChild(h);
   if (c.calc) box.appendChild(calcCand(g, st, t, c.calc));
+  if (c.calc2) box.appendChild(calcCand(g, st, t, c.calc2, "calc2"));
   else box.appendChild(el("p", {class:"bd-note"}, g === "boss" && t !== "딜" ? "보스 생존·믹스 계산은 준비 중이에요. 아래 커뮤니티 빌드를 참고하세요." : "배운 도술로는 이 조건의 트리를 계산할 수 없어요."));
   const comm = (c.comm || []).filter(e => (RECS.decks || {})[String(e.id)]);
   if (comm.length) box.appendChild(commCand(g, st, t, comm[0]));
@@ -167,7 +174,7 @@ function renderMyBuilds(){
   for (const g of keys) {
     const b = state.mybuilds[g], r = b.result || {};
     const it = el("div", {class:"mb-item"});
-    let src = "사이트 계산 1위";
+    let src = calcName(g, b.tier, b.from);
     if (b.from === "comm") { const k = (RECS.decks || {})[String(b.commId)]; src = "커뮤니티: " + (k ? k.name : "덱 #" + b.commId); }
     const h = el("h3", null, G[g] ? G[g].name : g); h.appendChild(el("small", null, b.style + " · " + b.tier + " · " + src)); it.appendChild(h);
     it.appendChild(iconRow(b.order, b.ult));

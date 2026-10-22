@@ -16,7 +16,7 @@ import decks as DK
 
 TODAY = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 9 * 3600))
 # 계산 방식 버전: 계산식·보정값·데이터 해석을 바꾸면 올린다. 결과의 engine이 이것과 다르면 다시 저장하지 않아도 다음 실행 때 다시 계산
-ENGINE = "2026-10-22e"
+ENGINE = "2026-10-22f"
 # 정기 실행(9시·21시) 때 이 시간보다 오래된 결과는 다시 계산(새 커뮤니티 덱 반영). 실행 간격이 12시간이고
 # 결과 기록이 실행 시작보다 늦어서 12시간으로 하면 한 번씩 건너뛰므로 11시간
 REFRESH_H = 11
@@ -513,6 +513,10 @@ def build_grounds(R, owned):
         grounds[g] = {"name": name, "styles": {st: {t: {"calc": cards[st][t], "comm": [{"id": i, "pct": pct(i, cards[st][t])}
                                                                                     for i in placed.get(g, {}).get(st, {}).get(t, [])]}
                                                   for t in ("생존", "믹스", "딜")} for st in sts}}
+        for st in sts:
+            alt = cards[st].get("생존2")   # 생존 두 번째 추천(유지력 우선)
+            if alt:
+                grounds[g]["styles"][st]["생존"]["calc2"] = alt
     unassigned = []
     for i in un:
         d = DK.parse(next(b for b in BUILDS if b.get("id") == i))
