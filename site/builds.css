@@ -44,3 +44,4 @@ body[data-mt="skills"] .col-r{display:none!important}
 .mb-res{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:.84rem}
 .mb-res label{display:flex;gap:5px;align-items:center}
 .mb-res input{width:6.5em;text-align:right}
+#sec-mybuilds{order:2}

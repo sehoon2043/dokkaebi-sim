@@ -364,6 +364,7 @@ def result_checks():
         if ok(bd is not None and "boss" in by, "작은 프로필: 보스 딜 카드 계산 1위가 없음"):
             best = max((t for t in r["trees"] if t["id"] == "boss" or t["id"].startswith("boss_")), key=lambda t: F.boss_score(t["slots"], t["order"]))
             ok(sorted(bd["order"]) == sorted(best["order"]), f"보스 딜 카드가 보스 트리 1위가 아님 {bd['order']} / {best['order']}")
+            ok(not bd["susN"] or bd["sus"] > 0, f"보스 딜 카드: 유지 도술 {bd['sustain']}이 있는데 유지력 0")
     # 정기 재계산: 11시간 넘은 결과는 다시, 1시간 된 결과는 그대로
     now = 2_000_000_000_000
     fresh = {"updatedAt": "1", "resultFor": "1", "result": r, "data": d, "resultAt": str(now - 3600_000)}

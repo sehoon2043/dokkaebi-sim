@@ -128,3 +128,43 @@ function renderBuilds(){
     box.appendChild(det);
   }
 }
+// 내 수첩: 사냥터별 내 빌드 + 돌려 본 결과(물약·분당 엽전·분당 처치). 바꾸면 바로 저장(추천 다시 계산 없음)
+let mbT = null;
+function mbSave(){ clearTimeout(mbT); mbT = setTimeout(sendPick, 800); }
+function renderMyBuilds(){
+  const box = $("mb"); if (!box) return; box.textContent = "";
+  const G = (RECS && RECS.grounds) || {}, gk = Object.keys(G);
+  const keys = Object.keys(state.mybuilds || {}).filter(g => state.mybuilds[g] && state.mybuilds[g].order)
+    .sort((a, b) => (gk.indexOf(a) + 1 || 99) - (gk.indexOf(b) + 1 || 99));
+  if (!keys.length) { box.appendChild(el("p", {class:"bd-note"}, "추천 빌드 탭에서 [이걸로]를 누르면 사냥터별로 여기에 저장돼요.")); return; }
+  const list = el("div", {class:"mb-list"});
+  for (const g of keys) {
+    const b = state.mybuilds[g], r = b.result || {};
+    const it = el("div", {class:"mb-item"});
+    let src = "사이트 계산 1위";
+    if (b.from === "comm") { const k = (RECS.decks || {})[String(b.commId)]; src = "커뮤니티: " + (k ? k.name : "덱 #" + b.commId); }
+    const h = el("h3", null, G[g] ? G[g].name : g); h.appendChild(el("small", null, b.style + " · " + b.tier + " · " + src)); it.appendChild(h);
+    it.appendChild(iconRow(b.order, b.ult));
+    const res = el("div", {class:"mb-res"}); res.appendChild(el("b", null, "돌려 본 결과"));
+    const pl = el("label", null, "물약"), ps = el("select", {style:"width:auto"});
+    for (const [v, t] of [["", "안 적음"], ["yes", "썼음"], ["no", "안 씀"]]) ps.appendChild(el("option", {value: v}, t));
+    ps.value = r.potion === true ? "yes" : r.potion === false ? "no" : "";
+    pl.appendChild(ps); res.appendChild(pl);
+    const num = (lab, key) => {
+      const l = el("label", null, lab), inp = el("input", {type:"number", inputmode:"decimal", min:"0", step:"any"});
+      inp.value = r[key] ?? ""; l.appendChild(inp); res.appendChild(l); return inp;
+    };
+    const ci = num("분당 엽전", "coinPerMin"), ki = num("분당 처치", "killPerMin");
+    const upd = () => {
+      const nr = {at: Date.now()}, c = parseFloat(ci.value), k = parseFloat(ki.value);
+      if (ps.value) nr.potion = ps.value === "yes";
+      if (isFinite(c)) nr.coinPerMin = c;
+      if (isFinite(k)) nr.killPerMin = k;
+      if (Object.keys(nr).length > 1) b.result = nr; else delete b.result;
+      mbSave();
+    };
+    ps.addEventListener("change", upd); ci.addEventListener("input", upd); ki.addEventListener("input", upd);
+    it.appendChild(res); list.appendChild(it);
+  }
+  box.appendChild(list);
+}

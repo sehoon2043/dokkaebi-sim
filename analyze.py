@@ -482,7 +482,9 @@ def build_grounds(R, owned):
     seeds = [_field_cand(o, u, tr) for o, u, tr in one if _laid(o, u)]
     mk = lambda s, o, par: _field_cand(o, par["ult"], par["tr"])
     tiers["단일"] = TI.pick_tiers(TI.expand(seeds, owned, lambda par, o: F.kills(_laid(o, par["ult"]), o, par["tr"]), _field_ok, mk))
-    bc = [{"score": b, "order": o, "ult": u, "susN": SU.count(o), "sus": 0.0, "kind": "boss"} for o, u, b in boss if _laid(o, u)]
+    # 보스 유지력: 시전 횟수는 필드 시간표(평타 없음)로 어림
+    bc = [{"score": b, "order": o, "ult": u, "susN": SU.count(o), "sus": SU.rate(o, F.casts(_laid(o, u), o), F.SEC), "kind": "boss"}
+          for o, u, b in boss if _laid(o, u)]
     # 보스 딜 = 스타일별 보스 중 1위(설계 9장). 절명 보스는 찌르기 낙인 회복이 딸려 와서 유지 0개 조건을 두지 않는다
     deal = max(bc, key=lambda c: c["score"], default=None)
     tiers["보스"] = {"딜": deal and dict(deal, dmgPct=0.0), "믹스": None, "생존": None}   # 보스 생존·믹스 계산은 4단계

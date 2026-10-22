@@ -460,6 +460,11 @@ rep('  <section id="sec-recs" hidden>',
 rep('  $("sec-recs").hidden = rightTab !== "recs";\n  if (rightTab === "recs") renderRecs();',
     '  const nb = !!(RECS && RECS.grounds);\n  $("sec-builds").hidden = rightTab !== "recs" || !nb;\n'
     '  $("sec-recs").hidden = rightTab !== "recs" || nb;\n  if (rightTab === "recs") { if (nb) renderBuilds(); else renderRecs(); }')
+# 내 수첩: 사냥터별 내 빌드 목록(돌려 본 결과 입력, 바로 저장)
+rep('  <section id="sec-logs" hidden>',
+    '  <section id="sec-mybuilds">\n    <h2>내 빌드</h2>\n    <p class="hint">사냥터별로 고른 빌드예요. 돌려 본 결과를 적으면 바로 저장되고, 사냥터별 추천 기준을 다듬는 데 쓰여요.</p>\n'
+    '    <div id="mb"></div>\n  </section>\n\n  <section id="sec-logs" hidden>')
+rep('$("memo").value = state.memo; renderRight();', '$("memo").value = state.memo; renderRight(); renderMyBuilds();')
 rep('const LSM = "dosa-notebook-site-mt";',
     'const ICONS = ' + json.dumps(json.load(open(os.path.join(SITE, "icons.json"), encoding="utf-8")), ensure_ascii=False) + ';\n'
     + rd("builds.js") + 'const LSM = "dosa-notebook-site-mt";')
