@@ -11,6 +11,7 @@ import explain as EX
 import field as F
 import mob as M
 import verify as VF
+import sustain as SU
 import gamedata
 
 S = F.S
@@ -106,6 +107,19 @@ def name_checks():
         ok(M.EFF.get(n, {}).get("rupt"), f"몰이 계산: {n}의 파열 대상 받는 피해 +10%가 빠짐")
     for n, ty in (("화염구", "화상"), ("하늘의 심판", "화상"), ("번개 폭풍", "감전"), ("일섬", "감전")):
         ok(M.EFF.get(n, {}).get("dot") == ty, f"몰이 계산: {n}의 {ty} 지속 피해가 빠짐")
+
+
+# ---------- 2-1. 유지력(회복·보호막) 표 ----------
+def sustain_checks():
+    ok(SU.count(["생명의 흐름", "방패 밀기", "사격"]) == 2, "유지력: 흐름+방패 밀기가 2개로 안 셈")
+    ok(SU.count(["회전 난격", "사격"]) == 0, "유지력: 기세 없이 회전 난격 회복을 셈")
+    ok(SU.count(["회전 난격", "대검 찍기"]) == 1, "유지력: 대검 찍기(기세)와 회전 난격을 1개로 안 셈")
+    ok(SU.count(["찌르기", "휘둘러치기"]) == 1, "유지력: 찌르기(질풍)→휘둘러치기 보호막을 안 셈")
+    ok(SU.active(["방패 밀기", "생명의 흐름"]) == ["방패 밀기", "생명의 흐름"], "유지력: 순서가 바뀜")
+    ok(abs(SU.rate(["생명의 흐름"], {"생명의 흐름": 20}, 300) - 4.0) < 1e-9, "유지력: 흐름 20회/300초가 초당 4%가 아님")
+    ok(SU.rate(["회전 난격"], {"회전 난격": 30}, 300) == 0, "유지력: 표식 없는 조건부 회복이 들어감")
+    for n in list(SU.UNCOND) + list(SU.COND) + [x for v in SU.MARK_SRC.values() for x in v]:
+        ok(n in NAMES, f"유지력 표: 없는 도술 이름 '{n}'")
 
 
 # ---------- 3. 계산 모델 성질 ----------
@@ -322,9 +336,13 @@ def measure_checks():
 
 
 if __name__ == "__main__":
-    for name, fn in (("데이터", data_checks), ("효과 표 이름", name_checks), ("계산 모델", model_checks), ("실측 재현", measure_checks),
-                     ("결과 형식", result_checks)):
+    # --only 이름: 그 섹션만 실행(예: --only 유지력)
+    only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None
+    for name, fn in (("데이터", data_checks), ("효과 표 이름", name_checks), ("유지력", sustain_checks), ("계산 모델", model_checks),
+                     ("실측 재현", measure_checks), ("결과 형식", result_checks)):
         if name == "결과 형식" and "--quick" in sys.argv:
+            continue
+        if only and name != only:
             continue
         n0 = len(FAIL)
         fn()
