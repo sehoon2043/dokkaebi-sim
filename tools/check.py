@@ -340,6 +340,41 @@ def result_checks():
             ok(hs and o[:len(hs)] == hs, f"작은 프로필 {tid}: 힐이 사용 순서 맨 앞이 아님 {o}")
     if "mobheal2" in by:
         ok(by["mobheal2"]["order"][0] == "생명의 흐름", "작은 프로필 mobheal2: 회복량이 큰 생명의 흐름이 맨 앞이 아님")
+    # 사냥터별 생존·믹스·딜 카드
+    g = r.get("grounds") or {}
+    ok(list(g) == ["wild", "well", "mine", "secret", "boss"], f"사냥터 순서·키가 다름 {list(g)}")
+    for gk, gv in g.items():
+        for stn, tiers in gv["styles"].items():
+            ok(set(tiers) == {"딜", "믹스", "생존"}, f"{gk}/{stn}: 등급 3개가 아님")
+            for tn, card in tiers.items():
+                cl = card["calc"]
+                if cl:
+                    tree_checks({"id": f"{gk}_{tn}", **cl, "stat": ""}, set(p["owned"]), "등급 카드")
+                    # 보스 딜은 스타일별 보스 중 1위(절명 찌르기 낙인 회복처럼 딸려 오는 유지력과 상관없이, 설계 9장)
+                    want = {"딜": cl["susN"] == 0 or gk == "boss", "믹스": cl["susN"] == 1, "생존": cl["susN"] >= 2}[tn]
+                    ok(want, f"{gk}/{stn}/{tn}: 유지 도술 {cl['susN']}개")
+                    hs = [x for x in cl["order"] if x in F.HEALS]
+                    ok(cl["order"][:len(hs)] == hs, f"{gk}/{stn}/{tn}: 힐이 맨 앞이 아님")
+                for e in card["comm"]:
+                    ok(str(e["id"]) in r["decks"], f"{gk}/{stn}/{tn}: decks에 없는 덱 {e['id']}")
+    if g:
+        ok(g["boss"]["styles"].keys() == {"보스"}, "보스는 광역/단일 없이 '보스' 하나여야 함")
+        ok(g["well"]["styles"]["광역"]["딜"]["calc"] is not None, "작은 프로필: 광역 딜 카드 계산 1위가 없음")
+        bd = g["boss"]["styles"]["보스"]["딜"]["calc"]
+        if ok(bd is not None and "boss" in by, "작은 프로필: 보스 딜 카드 계산 1위가 없음"):
+            best = max((t for t in r["trees"] if t["id"] == "boss" or t["id"].startswith("boss_")), key=lambda t: F.boss_score(t["slots"], t["order"]))
+            ok(sorted(bd["order"]) == sorted(best["order"]), f"보스 딜 카드가 보스 트리 1위가 아님 {bd['order']} / {best['order']}")
+    # 정기 재계산: 11시간 넘은 결과는 다시, 1시간 된 결과는 그대로
+    now = 2_000_000_000_000
+    fresh = {"updatedAt": "1", "resultFor": "1", "result": r, "data": d, "resultAt": str(now - 3600_000)}
+    ok(not A.stale(fresh, now), "1시간 전 결과를 다시 계산하려 함")
+    ok(A.stale(dict(fresh, resultAt=str(now - int(11.5 * 3600_000))), now), "11시간 30분 지난 결과를 다시 계산하지 않음(정기 실행 간격 12시간)")
+    ok(not A.stale(dict(fresh, data={}, resultAt="0"), now), "비운 프로필을 정기 재계산하려 함")
+    # 광역 도술이 모자란 프로필: 죽지 않고 광역 계산 1위 없음
+    r2 = A.analyze({"levels": {"저격": 5}, "owned": {n: {} for n in ALL if STYLE_OF[n] == "저격"}})
+    ok(not [n for n in r2["notes"] if "오류" in n or "실패" in n], f"저격만 배운 프로필 분석 오류 {r2['notes']}")
+    ok(((r2.get("grounds") or {}).get("well") or {"styles": {"광역": {"딜": {"calc": 1}}}})["styles"]["광역"]["딜"]["calc"] is None,
+       "광역 도술이 없는데 광역 카드 계산 1위가 있음(또는 grounds가 없음)")
 
 
 # ---------- 5. 실측 재현 (보정값이 실측에서 벗어나지 않았는지) ----------

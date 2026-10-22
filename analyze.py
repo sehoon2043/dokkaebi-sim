@@ -10,10 +10,16 @@ import mob as M
 import transcend as TR
 import explain as EX
 import verify as VF
+import sustain as SU
+import tiers as TI
+import decks as DK
 
 TODAY = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 9 * 3600))
 # 계산 방식 버전: 계산식·보정값·데이터 해석을 바꾸면 올린다. 결과의 engine이 이것과 다르면 다시 저장하지 않아도 다음 실행 때 다시 계산
-ENGINE = "2026-10-22b"
+ENGINE = "2026-10-22c"
+# 정기 실행(9시·21시) 때 이 시간보다 오래된 결과는 다시 계산(새 커뮤니티 덱 반영). 실행 간격이 12시간이고
+# 결과 기록이 실행 시작보다 늦어서 12시간으로 하면 한 번씩 건너뛰므로 11시간
+REFRESH_H = 11
 STYLE_ORDER = ["절명", "연타", "강타", "척살", "저격", "주술", "파멸", "강인", "기동", "헌신", "기만", "제압"]
 WORKERS = max(1, min(8, os.cpu_count() or 1))
 PROG = [None]   # 진행률 보고 함수 (pct, 단계 이름)
@@ -45,21 +51,23 @@ YT_AOE = ["연쇄 타격", "난타", "회전 난격"]
 HEAL_TIP = "힐은 맨 앞에 두고 체력 조건(예: 80% 이하)을 걸어 두세요. 계산은 쿨마다 쓴다고 본 값이라 실제 딜 손해는 이보다 작습니다."
 
 
-def mob_search(owned, heals):
-    """궁극기(연타·파멸·강타·주술·기만)마다 그 스타일 3개를 넣은 몰이 트리를 찾아 가장 좋은 것"""
+def mob_search(owned, heals, cap=None):
+    """궁극기(연타·파멸·강타·주술·기만)마다 그 스타일 3개를 넣은 몰이 트리를 찾아 가장 좋은 것.
+    cap: 유지 도술(sustain.count) 개수 상한(딜 카드는 0)"""
     hl = [h for h in ("생명의 축복", "생명의 흐름")[:heals] if h in owned]
     if len(hl) < heals:
         return None
     aoe = [n for n in M.K if n in owned and n in M.AOE and n not in M.HEALS and M.K[n]["dmg"] > 0 and not M.K[n].get("u")]
     rs = []
     for ult, st in M.ULT_MODE.items():   # 궁극기는 보유 목록에 없음(스타일 3개면 자동 등록)
-        r = _mob_one(owned, hl, aoe, ult, st)
+        r = _mob_one(owned, hl, aoe, ult, st, cap)
         if r:
             rs.append(r)
     return max(rs, key=lambda x: x[0]) if rs else None
 
 
-def _mob_one(owned, hl, aoe, ult, st):
+def _mob_one(owned, hl, aoe, ult, st, cap=None):
+    over = lambda t: cap is not None and SU.count(t) > cap
     val = lambda n: M.K[n]["dmg"] * min(5, M.TGT.get(n, 1)) / M.K[n]["cd"]
     mine = [n for n in M.K if n in owned and M.K[n]["style"] == st and n not in M.HEALS and M.K[n]["dmg"] > 0 and not M.K[n].get("u")]
     if len(mine) < 3:
@@ -71,7 +79,12 @@ def _mob_one(owned, hl, aoe, ult, st):
     cand = [n for n in aoe if n not in fixed]
     if free < 0 or len(cand) < free:
         return None
-    pick = sorted(cand, key=lambda n: -val(n))[:free]
+    pick = []
+    for n in sorted(cand, key=lambda n: -val(n)):
+        if len(pick) < free and not over(fixed + pick + [n]):
+            pick.append(n)
+    if len(pick) < free or over(fixed + pick):
+        return None
 
     def order_of(sl):
         first = [x for x in sl if x == "영혼 소용돌이"]
@@ -91,6 +104,8 @@ def _mob_one(owned, hl, aoe, ult, st):
                     continue
                 t = sl[:]
                 t[i] = n
+                if over(t):
+                    continue
                 v = M.w(order_of(t))
                 if v > best + 1e-6:
                     best, sl, imp = v, t, True
@@ -126,9 +141,10 @@ BUILDS = []
 NEAR = {"절명", "연타", "강타", "척살"}
 
 
-def load_builds(n=5):
+def load_builds(max_pages=30):
+    """10/21 패치 이후 덱 전부(칸·궁극기 있는 것). 추천 트리 탭(comm_)은 그중 추천 수 상위 5개"""
     out = []
-    for page in (1, 2):
+    for page in range(1, max_pages + 1):
         try:
             req = urllib.request.Request(f"https://kkaebigg.com/guilds/api/deck-builds?sort=popular&page={page}",
                                          headers={"Accept": "application/json", "User-Agent": "dokkaebi-dosa-analyzer"})
@@ -139,9 +155,9 @@ def load_builds(n=5):
         out += d.get("items") or []
         if page >= (d.get("pages") or 1):
             break
-    out = [b for b in out if b.get("slots") and b.get("ult")]
+    out = [b for b in out if b.get("slots") and b.get("ult") and (b.get("created_at") or 0) >= DK.PATCH_AT]
     out.sort(key=lambda b: -(b.get("likes") or 0))
-    return out[:n]
+    return out
 
 
 def community(bd, owned, ref):
@@ -293,6 +309,8 @@ def _job(job, owned):
             return None
         b0, c, o, _ = top("jhunt_h" if heal else "jhunt", me, owned, "field", 0.7)
         return (b0, c, o, F.kills(c, o, 0.4), F.kills(c, o, 1.0))
+    if kind == "mob0":   # 사냥터 딜 카드용: 유지 도술 없는 몰이
+        return mob_search(owned, 0, cap=0)
     if kind == "boss":
         bs = F.boss_search(owned, seeds=5)
         if not bs:
@@ -327,7 +345,7 @@ def _job_safe(job, owned):
 
 def run_jobs(jobs, owned, ctx, p0, p1):
     """탐색 작업들을 여러 프로세스로 나눠 실행. 오래 걸리는 작업부터 넣는다"""
-    weight = {"rng": 5, "melee": 4, "rh": 3, "boss": 3, "hunt_st": 3, "boss_st": 2, "pure": 2, "pureh": 1, "mob": 1}
+    weight = {"rng": 5, "melee": 4, "rh": 3, "boss": 3, "hunt_st": 3, "boss_st": 2, "pure": 2, "pureh": 1, "mob": 1, "mob0": 1}
     order = sorted(jobs, key=lambda j: -weight.get(j[0], 1))
     out = {}
     if WORKERS > 1:
@@ -369,6 +387,131 @@ def verify_all(trees, owned, ctx, p0=55, p1=97):
             if v:
                 t["verify"] = v
             progress(p0 + (p1 - p0) * i / n, "추천 트리 검증")
+
+
+# ---------- 사냥터별 생존·믹스·딜 카드 ----------
+def _laid(o, u):
+    """칸 배치(하단 5칸에 궁극기 스타일 3개). 못 놓으면 None"""
+    try:
+        return arrange(o, u)
+    except (StopIteration, IndexError, ValueError):
+        return None
+
+
+def _mob_ok(par, o):
+    u = par["ult"]
+    st = F.style(u)
+    return (sum(F.style(k) == st for k in o if k != u and k not in M.HEALS) >= 3 and M.valid_order(o)
+            and len(set(o)) == len(o) and _laid(o, u) is not None)
+
+
+def _field_ok(par, o):
+    return len(set(o)) == len(o) and _laid(o, par["ult"]) is not None
+
+
+def _mob_cand(o, u):
+    return {"score": M.w(o), "order": o, "ult": u, "susN": SU.count(o), "sus": SU.rate(o, M.casts(o), M.SEC), "kind": "mob"}
+
+
+def _field_cand(o, u, tr):
+    c = _laid(o, u)
+    return {"score": F.kills(c, o, tr), "order": o, "ult": u, "susN": SU.count(o), "sus": SU.rate(o, F.casts(c, o), F.SEC),
+            "kind": "field", "tr": tr}
+
+
+def _seeds(R):
+    """기존 탐색 결과에서 광역(몰이)·단일(필드)·보스 씨앗 (순서, 궁극기[, 이동 시간 | 점수])"""
+    aoe = [(r[1], r[2]) for r in (R.get(("mob",)) or []) + [R.get(("mob0",))] if r]
+    one = []
+    single_top = (R.get(("rng",)) or ([], None))[1]
+    for r in (R.get(("pure",)), single_top, R.get(("pureh",)), R.get(("rh",))):
+        if r:
+            one.append((r[2], r[3], 0.3))
+    for heal in (False, True):
+        r = R.get(("melee", heal))
+        if r:
+            one.append((r[2], "암습", 0.7))
+    boss = []
+    if R.get(("boss",)):
+        b, c, o, _ = R[("boss",)]
+        boss.append((o, "암습", b))
+    for k, r in R.items():
+        if k[0] == "hunt_st" and r:
+            one.append((r[2], r[3], r[4]))
+        if k[0] == "boss_st" and r:
+            boss.append((r[2], r[3], r[0]))
+    return aoe, one, boss
+
+
+def _card(c):
+    if not c:
+        return None
+    sus = SU.active(c["order"])
+    out = {"label": f"궁극기 {c['ult']} · " + ("·".join(sus) or "유지 도술 없음"), "slots": arrange(c["order"], c["ult"]),
+           "order": c["order"], "ult": c["ult"], "score": round(c["score"], 3), "dmgPct": round(c.get("dmgPct", 0.0), 1),
+           "sus": round(c["sus"], 2), "susN": c["susN"], "sustain": sus, "kind": c["kind"]}
+    if "tr" in c:
+        out["tr"] = c["tr"]
+    return out
+
+
+def _deck_score(info, kind):
+    """커뮤니티 덱 점수(카드와 같은 모델). 계산 못 하면 None"""
+    o = info["order"]
+    known = [n for n in info["slots"] if n in F.S.BY]
+    fo = [x for x in o if x in F.S.BY]
+    try:
+        if kind == "mob":
+            mo = [x for x in o if x in M.K or x in ("폭주", "대폭발")]
+            return M.w(mo) if mo else None
+        if kind == "boss":
+            return F.boss_score(known, fo)
+        tr = 0.7 if sum(F.style(n) in NEAR for n in known) >= 4 else 0.3
+        return F.kills(known, fo, tr)
+    except Exception:
+        return None
+
+
+def build_grounds(R, owned):
+    """결과에 넣을 grounds(사냥터 → 광역/단일/보스 → 생존·믹스·딜 카드), decks(커뮤니티 덱 정보), unassigned"""
+    aoe, one, boss = _seeds(R)
+    tiers = {}
+    seeds = [_mob_cand(o, u) for o, u in aoe]
+    mk = lambda s, o, par: _mob_cand(o, par["ult"])
+    tiers["광역"] = TI.pick_tiers(TI.expand(seeds, owned, lambda par, o: M.w(o), _mob_ok, mk))
+    seeds = [_field_cand(o, u, tr) for o, u, tr in one if _laid(o, u)]
+    mk = lambda s, o, par: _field_cand(o, par["ult"], par["tr"])
+    tiers["단일"] = TI.pick_tiers(TI.expand(seeds, owned, lambda par, o: F.kills(_laid(o, par["ult"]), o, par["tr"]), _field_ok, mk))
+    bc = [{"score": b, "order": o, "ult": u, "susN": SU.count(o), "sus": 0.0, "kind": "boss"} for o, u, b in boss if _laid(o, u)]
+    # 보스 딜 = 스타일별 보스 중 1위(설계 9장). 절명 보스는 찌르기 낙인 회복이 딸려 와서 유지 0개 조건을 두지 않는다
+    deal = max(bc, key=lambda c: c["score"], default=None)
+    tiers["보스"] = {"딜": deal and dict(deal, dmgPct=0.0), "믹스": None, "생존": None}   # 보스 생존·믹스 계산은 4단계
+    cards = {st: {t: _card(c) for t, c in v.items()} for st, v in tiers.items()}
+
+    placed, un, info = DK.classify(BUILDS, owned)
+    cache = {}
+
+    def pct(i, card):
+        if not card:
+            return None
+        k = (i, card["kind"])
+        if k not in cache:
+            cache[k] = _deck_score(info[i], card["kind"])
+        v = cache[k]
+        return round((v / card["score"] - 1) * 100, 1) if v and card["score"] else None
+
+    grounds = {}
+    for g, name in DK.GROUNDS.items():
+        sts = ("보스",) if g == "boss" else ("광역", "단일")
+        grounds[g] = {"name": name, "styles": {st: {t: {"calc": cards[st][t], "comm": [{"id": i, "pct": pct(i, cards[st][t])}
+                                                                                    for i in placed.get(g, {}).get(st, {}).get(t, [])]}
+                                                  for t in ("생존", "믹스", "딜")} for st in sts}}
+    unassigned = []
+    for i in un:
+        d = DK.parse(next(b for b in BUILDS if b.get("id") == i))
+        st, t = DK.style_of(d), DK.tier_of(d)
+        unassigned.append({"id": i, "style": st, "tier": t, "pct": pct(i, cards[st]["딜"])})
+    return {"grounds": grounds, "decks": {str(i): v for i, v in info.items()}, "unassigned": unassigned}
 
 
 # ---------- 결과 조립 ----------
@@ -414,7 +557,7 @@ def analyze(data):
     P = F.pool(owned)
     cnt = {st: sum(F.style(n) == st for n in P if n not in F.HEALS) for st in STYLE_ORDER}
     sts = sorted([x for x in STYLE_ORDER if cnt[x] >= 3], key=lambda x: -cnt[x])
-    jobs = [("mob",), ("rng",), ("pure",), ("pureh",), ("rh",), ("melee", False), ("melee", True), ("boss",)]
+    jobs = [("mob",), ("mob0",), ("rng",), ("pure",), ("pureh",), ("rh",), ("melee", False), ("melee", True), ("boss",)]
     jobs += [("boss_st", st) for st in sts if st != "절명"] + [("hunt_st", st) for st in sts if st not in ("절명", "저격", "파멸")]
     R = run_jobs(jobs, owned, (levels, steps, F.REF[0], F.NSLOT[0]), 5, 50)
 
@@ -530,6 +673,13 @@ def analyze(data):
             sg = []
         if sg:
             t["points"] = t["points"] + sg[:1]
+    progress(53, "사냥터별 추천")
+    try:
+        extra = build_grounds(R, owned)
+    except Exception as e:
+        print("사냥터 추천 실패", type(e).__name__, e)
+        notes.append(f"사냥터 추천 계산 실패({type(e).__name__})")
+        extra = {}
     mark_best(trees)
     progress(55, "추천 트리 검증")
     verify_all(trees, owned, (levels, steps, F.REF[0], F.NSLOT[0]), 55, 97)
@@ -537,14 +687,15 @@ def analyze(data):
     # 커뮤니티 덱(외부 덱 게시판 인기순) — 이 사람 강화·돌파 기준 점수와 내 추천 대비
     if not BUILDS:
         notes.append("커뮤니티 덱을 불러오지 못해 이번 계산에서는 빠졌어요.")
-    for bd in BUILDS:
+    for bd in BUILDS[:5]:
         try:
             trees.append(community(bd, owned, ref))
         except Exception as e:
             notes.append(f"커뮤니티 덱 '{bd.get('name', '')[:20]}' 계산 실패({type(e).__name__})")
     lv = " · ".join(f"{s} {levels[s]}" for s in STYLE_ORDER if levels.get(s))
     br = f" · 돌파 반영 {len(steps)}개" if steps else ""
-    return {"updated": TODAY, "engine": ENGINE, "basis": (lv or "강화 정보 없음") + br + f", 도술 {F.NSLOT[0]}칸", "trees": trees, "notes": notes}
+    return {"updated": TODAY, "engine": ENGINE, "basis": (lv or "강화 정보 없음") + br + f", 도술 {F.NSLOT[0]}칸", "trees": trees, "notes": notes,
+            **extra}
 
 
 # ---------- Apps Script 통신 ----------
@@ -557,13 +708,20 @@ def call(url, params=None, body=None):
         return json.loads(r.read().decode("utf-8"))
 
 
-def stale(x):
-    """다시 계산할 프로필: 저장 뒤 아직 계산 안 했거나, 예전 계산 방식(engine)으로 계산된 것.
+def stale(x, now_ms=None):
+    """다시 계산할 프로필: 저장 뒤 아직 계산 안 했거나, 예전 계산 방식(engine)으로 계산됐거나, 결과가 REFRESH_H시간보다 오래된 것.
     배운 도술이 없는(비운) 프로필은 계산할 게 없어서 뺀다"""
     if not (x.get("data") or {}).get("owned"):
         return False
     res = x.get("result") or {}
-    return not x.get("resultFor") or str(x["resultFor"]) != str(x["updatedAt"]) or res.get("engine") != ENGINE
+    if not x.get("resultFor") or str(x["resultFor"]) != str(x["updatedAt"]) or res.get("engine") != ENGINE:
+        return True
+    try:
+        at = float(x.get("resultAt") or 0)
+    except (TypeError, ValueError):
+        at = 0
+    now = time.time() * 1000 if now_ms is None else now_ms
+    return bool(at) and now - at > REFRESH_H * 3600 * 1000
 
 
 def todo_list(url, key):
