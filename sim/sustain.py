@@ -22,8 +22,15 @@ def active(order):
     return [n for n in order if n in UNCOND or (n in COND and MARK_SRC[COND[n][0]] & have)]
 
 
+def uncond(order):
+    """조건 없는 유지 도술(순서 유지)"""
+    return [n for n in order if n in UNCOND]
+
+
 def count(order):
-    return len(active(order))
+    """등급(생존·믹스·딜)을 나누는 유지 도술 개수: 조건 없는 것만(10/22 사용자 결정).
+    조건부 회복·보호막(낙인·기세 등)은 rate(유지력 수치)에만 들어간다"""
+    return len(uncond(order))
 
 
 def rate(order, casts, seconds):

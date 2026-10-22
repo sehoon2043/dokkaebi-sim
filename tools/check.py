@@ -113,11 +113,16 @@ def name_checks():
 
 # ---------- 2-1. 유지력(회복·보호막) 표 ----------
 def sustain_checks():
+    # 등급(생존·믹스·딜)은 조건 없는 유지 도술만 센다(10/22 사용자 결정: 절명 찌르기 낙인 회복 때문에 딜 1위가 빠지지 않게)
     ok(SU.count(["생명의 흐름", "방패 밀기", "사격"]) == 2, "유지력: 흐름+방패 밀기가 2개로 안 셈")
-    ok(SU.count(["회전 난격", "사격"]) == 0, "유지력: 기세 없이 회전 난격 회복을 셈")
-    ok(SU.count(["회전 난격", "대검 찍기"]) == 1, "유지력: 대검 찍기(기세)와 회전 난격을 1개로 안 셈")
-    ok(SU.count(["찌르기", "휘둘러치기"]) == 1, "유지력: 찌르기(질풍)→휘둘러치기 보호막을 안 셈")
+    ok(SU.count(["회전 난격", "대검 찍기"]) == 0, "유지력: 조건부 회복(기세)을 등급 개수에 셈")
+    ok(SU.count(["찌르기", "휘둘러 내려치기", "내려찍기"]) == 0, "유지력: 낙인 회복·보호막을 등급 개수에 셈")
+    # 유지력 수치에는 조건부도 들어감(표식을 거는 도술이 있을 때만)
+    ok(SU.active(["회전 난격", "사격"]) == [], "유지력: 기세 없이 회전 난격 회복을 셈")
+    ok(SU.active(["회전 난격", "대검 찍기"]) == ["회전 난격"], "유지력: 대검 찍기(기세)와 회전 난격 회복을 안 셈")
+    ok(SU.active(["찌르기", "휘둘러치기"]) == ["휘둘러치기"], "유지력: 찌르기(질풍)→휘둘러치기 보호막을 안 셈")
     ok(SU.active(["방패 밀기", "생명의 흐름"]) == ["방패 밀기", "생명의 흐름"], "유지력: 순서가 바뀜")
+    ok(SU.uncond(["찌르기", "방패 밀기", "내려찍기", "생명의 흐름"]) == ["방패 밀기", "생명의 흐름"], "유지력: 조건 없는 유지 도술 목록이 다름")
     ok(abs(SU.rate(["생명의 흐름"], {"생명의 흐름": 20}, 300) - 4.0) < 1e-9, "유지력: 흐름 20회/300초가 초당 4%가 아님")
     ok(SU.rate(["회전 난격"], {"회전 난격": 30}, 300) == 0, "유지력: 표식 없는 조건부 회복이 들어감")
     for n in list(SU.UNCOND) + list(SU.COND) + [x for v in SU.MARK_SRC.values() for x in v]:
@@ -194,6 +199,34 @@ def deck_checks():
     ok(placed.get("boss", {}).get("보스", {}).get("딜") == [14], f"덱: 보스 덱이 보스 칸에 없음 {placed.get('boss')}")
     ok(info[11]["missing"] == ["요혼격"], f"덱: 안 배운 도술 표시가 다름 {info[11]['missing']}")
     ok(all(13 not in v for g in placed.values() for s in g.values() for v in s.values()), "덱: 패치 전 덱이 분류됨")
+    # 형식이 이상한 덱 하나 때문에 전체 분류가 죽지 않아야 함(외부 게시판 데이터)
+    weird = [dict(fake_deck(20, "우물 a", AOE4 + ONE4), slots=[None] * 8), dict(fake_deck(21, "우물 b", AOE4 + ONE4), ult="대폭발"),
+             dict(fake_deck(22, "우물 c", AOE4 + ONE4), ult_at="x"), dict(fake_deck(23, "우물 d", AOE4 + ONE4), likes="5"),
+             dict(fake_deck(24, "우물 e", AOE4 + ONE4), created_at="2026"), dict(fake_deck(25, "우물 f", AOE4 + ONE4), order=[None, {"name": None}]),
+             fake_deck(10, "우물 덱 A 중복", AOE4 + ONE4, likes=50)]
+    try:
+        p2, u2, i2 = DK.classify(raw + weird, owned)
+        ids = p2.get("well", {}).get("광역", {}).get("딜", [])
+        ok(ids.count(10) == 1, f"덱: 같은 id가 두 번 들어감 {ids}")
+    except Exception as e:
+        ok(False, f"덱: 형식이 이상한 덱에서 분류가 죽음 ({type(e).__name__}: {e})")
+    ok(DK.at_of({"created_at": "x"}) == 0 and DK.at_of({"created_at": 5}) == 5, "덱: 작성 시각 읽기가 이상한 값에서 죽거나 틀림")
+
+
+# ---------- 2-4. 정기 재계산 ----------
+def refresh_checks():
+    now = 2_000_000_000_000
+    b = {"updatedAt": "1", "resultFor": "1", "result": {"engine": A.ENGINE}, "data": {"owned": {"사격": {}}}, "resultAt": str(now - 3600_000)}
+    ok(A.why(b, now) is None, "재계산: 1시간 된 결과를 다시 계산하려 함")
+    ok(A.why(dict(b, resultAt=str(now - int(11.5 * 3600_000))), now) == "age", "재계산: 오래된 결과의 이유가 age가 아님")
+    ok(A.why(dict(b, updatedAt="2"), now) == "saved", "재계산: 새로 저장한 프로필의 이유가 saved가 아님")
+    ok(A.why(dict(b, result={"engine": "old"}), now) == "engine", "재계산: 예전 계산 방식 결과의 이유가 engine이 아님")
+    ok(A.why(dict(b, data={}), now) is None, "재계산: 비운 프로필을 계산하려 함")
+    good, bad = {"trees": [1], "notes": []}, {"trees": [], "notes": ["계산 오류: X"]}
+    ok(A.should_write("age", True, good), "재계산: 정상 정기 재계산 결과를 안 씀")
+    ok(not A.should_write("age", False, good), "재계산: 커뮤니티 덱을 못 받은 정기 재계산이 기존 결과를 덮음")
+    ok(not A.should_write("age", True, bad), "재계산: 계산 오류 결과가 정기 재계산 때 기존 결과를 덮음")
+    ok(A.should_write("saved", False, bad), "재계산: 저장 직후 결과(오류 포함)를 안 씀")
 
 
 # ---------- 3. 계산 모델 성질 ----------
@@ -358,6 +391,11 @@ def result_checks():
                 for e in card["comm"]:
                     ok(str(e["id"]) in r["decks"], f"{gk}/{stn}/{tn}: decks에 없는 덱 {e['id']}")
     if g:
+        # 단일 딜 카드는 조건 없는 회복·보호막이 없는 필드 트리 중 1위 이상(절명처럼 낙인 회복이 딸린 1위가 빠지면 안 됨, 10/22 다후)
+        dl = g["well"]["styles"]["단일"]["딜"]["calc"]
+        fv = [F.kills(t["slots"], t["order"], 0.7 if t["id"] == "jhunt" else 0.3) for t in r["trees"]
+              if t["id"] in ("pure", "single", "jhunt") and not SU.uncond(t["order"])]
+        ok(dl and fv and dl["score"] >= max(fv) - 0.01, f"단일 딜 카드가 필드 트리 1위보다 약함 {dl and dl['score']} < {max(fv, default=None)}")
         ok(g["boss"]["styles"].keys() == {"보스"}, "보스는 광역/단일 없이 '보스' 하나여야 함")
         ok(g["well"]["styles"]["광역"]["딜"]["calc"] is not None, "작은 프로필: 광역 딜 카드 계산 1위가 없음")
         bd = g["boss"]["styles"]["보스"]["딜"]["calc"]
@@ -456,7 +494,7 @@ def measure_checks():
 if __name__ == "__main__":
     # --only 이름: 그 섹션만 실행(예: --only 유지력)
     only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None
-    for name, fn in (("데이터", data_checks), ("효과 표 이름", name_checks), ("유지력", sustain_checks), ("등급", tier_checks), ("커뮤니티 덱", deck_checks), ("계산 모델", model_checks),
+    for name, fn in (("데이터", data_checks), ("효과 표 이름", name_checks), ("유지력", sustain_checks), ("등급", tier_checks), ("커뮤니티 덱", deck_checks), ("재계산", refresh_checks), ("계산 모델", model_checks),
                      ("실측 재현", measure_checks), ("결과 형식", result_checks)):
         if name == "결과 형식" and "--quick" in sys.argv:
             continue

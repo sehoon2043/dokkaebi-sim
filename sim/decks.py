@@ -15,17 +15,35 @@ UNASSIGNED = 30
 VIDEO = re.compile(r"https?://(?:www\.|m\.)?(?:youtube\.com|youtu\.be|chzzk\.naver\.com|(?:[\w-]+\.)?sooplive\.co\.kr|(?:[\w-]+\.)?afreecatv\.com)\S*")
 
 
+def _num(v):
+    try:
+        return int(v or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def at_of(bd):
+    """작성 시각(초). 이상한 값이면 0(패치 전으로 봄)"""
+    return _num(bd.get("created_at"))
+
+
 def parse(bd):
-    """덱 → {id, name, author, likes, dislikes, at, body, slots, order, ult}. 궁극기 없음·빈 칸·모르는 도술이면 None"""
-    slots = [x.get("name") for x in bd.get("slots") or []]
-    ult = (bd.get("ult") or {}).get("name")
-    if not slots or not ult or not all(slots) or any(n not in S.BY for n in slots + [ult]):
+    """덱 → {id, name, author, likes, dislikes, at, body, slots, order, ult}. 궁극기 없음·빈 칸·모르는 도술·형식 오류면 None"""
+    try:
+        slots = [x.get("name") for x in bd.get("slots") or []]
+        ult = (bd.get("ult") or {}).get("name")
+        if not slots or not isinstance(ult, str) or not all(isinstance(n, str) for n in slots) or any(n not in S.BY for n in slots + [ult]):
+            return None
+        order = [x["name"] for x in (bd.get("order") or bd["slots"]) if isinstance(x, dict) and x.get("name") in slots]
+        order += [n for n in slots if n not in order]   # 순서 목록이 모자라면 칸 순서로 채움
+        order.insert(max(0, min(len(order), _num(bd.get("ult_at")))), ult)
+        if bd.get("id") is None:
+            return None
+        return {"id": bd["id"], "name": str(bd.get("name") or "이름 없는 덱"), "author": str((bd.get("author") or {}).get("name") or "익명"),
+                "likes": _num(bd.get("likes")), "dislikes": _num(bd.get("dislikes")), "at": at_of(bd),
+                "body": str(bd.get("body") or ""), "slots": slots, "order": order, "ult": ult}
+    except (AttributeError, TypeError, KeyError):
         return None
-    order = [x["name"] for x in (bd.get("order") or bd["slots"]) if x.get("name") in slots]
-    order.insert(max(0, min(len(order), int(bd.get("ult_at") or 0))), ult)
-    return {"id": bd.get("id"), "name": bd.get("name") or "이름 없는 덱", "author": (bd.get("author") or {}).get("name", "익명"),
-            "likes": bd.get("likes") or 0, "dislikes": bd.get("dislikes") or 0, "at": bd.get("created_at") or 0,
-            "body": bd.get("body") or "", "slots": slots, "order": order, "ult": ult}
 
 
 def grounds_of(d):
@@ -58,7 +76,11 @@ def rank(ds, owned):
 def classify(raw, owned):
     """(placed, unassigned, info): placed[사냥터][광역|단일|보스][딜|믹스|생존] = [덱 id](최대 PER_CARD),
     unassigned = 사냥터가 안 적힌 덱 id(최대 UNASSIGNED), info[id] = 화면에 보여 줄 덱 정보"""
-    ds = [d for d in (parse(b) for b in raw) if d and d["at"] >= PATCH_AT]
+    ds, seen = [], set()
+    for d in (parse(b) for b in raw):
+        if d and d["at"] >= PATCH_AT and d["id"] not in seen:   # 인기순 페이지가 받는 도중 밀리면 같은 덱이 두 번 올 수 있음
+            seen.add(d["id"])
+            ds.append(d)
     placed, un = {}, []
     for d in rank(ds, owned):
         gs = grounds_of(d)

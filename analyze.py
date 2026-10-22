@@ -138,12 +138,14 @@ def mob_add_heal(prev, owned, heal):
 
 # ---------- 커뮤니티 덱 ----------
 BUILDS = []
+BUILDS_OK = [False]   # 덱 게시판을 끝 페이지까지 받았는지(정기 재계산이 기존 결과를 덮어도 되는지)
 NEAR = {"절명", "연타", "강타", "척살"}
 
 
 def load_builds(max_pages=30):
     """10/21 패치 이후 덱 전부(칸·궁극기 있는 것). 추천 트리 탭(comm_)은 그중 추천 수 상위 5개"""
     out = []
+    BUILDS_OK[0] = False
     for page in range(1, max_pages + 1):
         try:
             req = urllib.request.Request(f"https://kkaebigg.com/guilds/api/deck-builds?sort=popular&page={page}",
@@ -152,11 +154,13 @@ def load_builds(max_pages=30):
         except Exception as e:
             print("커뮤니티 덱 받기 실패", type(e).__name__)
             break
-        out += d.get("items") or []
+        out += [b for b in d.get("items") or [] if isinstance(b, dict)]
         if page >= (d.get("pages") or 1):
+            BUILDS_OK[0] = True
             break
-    out = [b for b in out if b.get("slots") and b.get("ult") and (b.get("created_at") or 0) >= DK.PATCH_AT]
-    out.sort(key=lambda b: -(b.get("likes") or 0))
+    # 형식이 맞는(DK.parse) 패치 이후 덱만
+    out = [b for b in out if DK.at_of(b) >= DK.PATCH_AT and DK.parse(b)]
+    out.sort(key=lambda b: -DK.parse(b)["likes"])
     return out
 
 
@@ -447,7 +451,8 @@ def _card(c):
     if not c:
         return None
     sus = SU.active(c["order"])
-    out = {"label": f"궁극기 {c['ult']} · " + ("·".join(sus) or "유지 도술 없음"), "slots": arrange(c["order"], c["ult"]),
+    # 이름표에는 등급을 가르는 조건 없는 회복·보호막만(조건부는 유지력 수치에만 들어감)
+    out = {"label": f"궁극기 {c['ult']} · " + ("·".join(SU.uncond(c["order"])) or "회복·보호막 도술 없음"), "slots": arrange(c["order"], c["ult"]),
            "order": c["order"], "ult": c["ult"], "score": round(c["score"], 3), "dmgPct": round(c.get("dmgPct", 0.0), 1),
            "sus": round(c["sus"], 2), "susN": c["susN"], "sustain": sus, "kind": c["kind"]}
     if "tr" in c:
@@ -710,20 +715,32 @@ def call(url, params=None, body=None):
         return json.loads(r.read().decode("utf-8"))
 
 
-def stale(x, now_ms=None):
-    """다시 계산할 프로필: 저장 뒤 아직 계산 안 했거나, 예전 계산 방식(engine)으로 계산됐거나, 결과가 REFRESH_H시간보다 오래된 것.
-    배운 도술이 없는(비운) 프로필은 계산할 게 없어서 뺀다"""
+def why(x, now_ms=None):
+    """다시 계산할 이유: "saved"(저장 뒤 아직 계산 안 함) / "engine"(예전 계산 방식) / "age"(결과가 REFRESH_H시간보다 오래됨) / None.
+    배운 도술이 없는(비운) 프로필은 계산할 게 없어서 None"""
     if not (x.get("data") or {}).get("owned"):
-        return False
-    res = x.get("result") or {}
-    if not x.get("resultFor") or str(x["resultFor"]) != str(x["updatedAt"]) or res.get("engine") != ENGINE:
-        return True
+        return None
+    if not x.get("resultFor") or str(x["resultFor"]) != str(x["updatedAt"]):
+        return "saved"
+    if (x.get("result") or {}).get("engine") != ENGINE:
+        return "engine"
     try:
         at = float(x.get("resultAt") or 0)
     except (TypeError, ValueError):
         at = 0
     now = time.time() * 1000 if now_ms is None else now_ms
-    return bool(at) and now - at > REFRESH_H * 3600 * 1000
+    return "age" if at and now - at > REFRESH_H * 3600 * 1000 else None
+
+
+def stale(x, now_ms=None):
+    return why(x, now_ms) is not None
+
+
+def should_write(reason, builds_ok, res):
+    """정기 재계산(age)은 커뮤니티 덱을 다 받았고 계산 오류가 없을 때만 기존 결과를 덮는다(일시 장애로 전원 결과가 나빠지지 않게)"""
+    if reason != "age":
+        return True
+    return builds_ok and not any("오류" in str(n) for n in res.get("notes") or [])
 
 
 def todo_list(url, key):
@@ -799,14 +816,21 @@ def run_list(todo, url, key, done):
         reporter(url, key, p)(0, f"대기 중 · 앞에 {i}명" if i else "곧 시작")
     for p in todo:
         t0 = time.time()
+        reason = why(p)
+        done[p["nick"]] = str(p["updatedAt"])
+        if reason == "age" and not BUILDS_OK[0]:
+            print("정기 재계산 건너뜀: 커뮤니티 덱을 다 받지 못함(기존 결과 유지)")
+            continue
         PROG[0] = reporter(url, key, p)
         try:
             res = analyze(p.get("data") or {})
         except Exception as e:
             res = {"updated": TODAY, "engine": ENGINE, "basis": "", "trees": [], "notes": [f"계산 오류: {type(e).__name__}"]}
         PROG[0] = None
+        if not should_write(reason, BUILDS_OK[0], res):
+            print("정기 재계산 결과를 쓰지 않음: 계산 오류(기존 결과 유지)", res.get("notes"))
+            continue
         w = call(url, body={"a": "result", "key": key, "nick": p["nick"], "updatedAt": p["updatedAt"], "result": res})
-        done[p["nick"]] = str(p["updatedAt"])
         # 저장소가 공개라 실행 기록에는 닉네임을 남기지 않는다
         print(f"{len(done)}번째 프로필", len(res["trees"]), "트리", f"{time.time() - t0:.0f}초", w.get("ok"))
 
