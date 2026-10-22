@@ -175,6 +175,10 @@ def deck_checks():
     owned = set(AOE4 + ONE4)
     d = DK.parse(fake_deck(1, "215k~260k 몰이", AOE4 + ONE4))
     ok(d and DK.grounds_of(d) == ["well", "mine"], f"덱: '215k~260k'가 우물·폐광 둘 다가 아님 {d and DK.grounds_of(d)}")
+    e = DK.parse(fake_deck(1, "폐광전용(260k,290k) 335K 노물약", AOE4 + ONE4))
+    ok(e and DK.grounds_of(e) == ["mine", "k290", "k310"], f"덱: 260k·290k·335K가 폐광·290k·310k~335k가 아님 {e and DK.grounds_of(e)}")
+    e = DK.parse(fake_deck(1, "1300킬 300 kills 490k 단일", AOE4 + ONE4))
+    ok(e and DK.grounds_of(e) == ["k400"], f"덱: '300 kills'를 사냥터로 셈 {e and DK.grounds_of(e)}")
     ok(d and d["order"].index("대폭발") == 3, "덱: 궁극기가 ult_at 위치에 안 들어감")
     ok(DK.style_of(d) == "광역", "덱: 범위 도술 4개가 광역이 아님")
     ok(DK.style_of(DK.parse(fake_deck(2, "x", AOE4[:3] + ONE4 + ["요혼격"]))) == "단일", "덱: 범위 도술 3개가 단일이 아님")
@@ -375,7 +379,7 @@ def result_checks():
         ok(by["mobheal2"]["order"][0] == "생명의 흐름", "작은 프로필 mobheal2: 회복량이 큰 생명의 흐름이 맨 앞이 아님")
     # 사냥터별 생존·믹스·딜 카드
     g = r.get("grounds") or {}
-    ok(list(g) == ["wild", "well", "mine", "secret", "boss"], f"사냥터 순서·키가 다름 {list(g)}")
+    ok(list(g) == ["wild", "well", "mine", "k290", "k310", "k360", "k400", "secret", "boss"], f"사냥터 순서·키가 다름 {list(g)}")
     for gk, gv in g.items():
         for stn, tiers in gv["styles"].items():
             ok(set(tiers) == {"딜", "믹스", "생존"}, f"{gk}/{stn}: 등급 3개가 아님")

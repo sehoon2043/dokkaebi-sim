@@ -6,8 +6,12 @@ import timeline as S
 
 TGT = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "targets.json"), encoding="utf-8"))
 # 사냥터 키 → 이름(칩 순서). 비경 3종은 이름을 받기 전까지 하나
-GROUNDS = {"wild": "황무지", "well": "우물동굴 215k", "mine": "음산한 폐광 260k", "secret": "비경", "boss": "보스"}
+GROUNDS = {"wild": "황무지", "well": "우물동굴 215k", "mine": "음산한 폐광 260k", "k290": "290k", "k310": "310k~335k",
+           "k360": "360k~385k", "k400": "400k 이상", "secret": "비경", "boss": "보스"}
 KEYWORDS = {"wild": ["황무지"], "well": ["우물", "215k"], "mine": ["폐광", "260k"], "secret": ["비경"], "boss": ["보스", "레이드", "필보"]}
+# 260k 위 사냥터: 커뮤니티가 이름보다 전투력 숫자(290k·335k 등)로 불러서 글에 적힌 'NNNk' 숫자 범위로 나눈다
+HIGH = [("k290", 280, 300), ("k310", 300, 350), ("k360", 350, 400), ("k400", 400, 1000)]
+KNUM = re.compile(r"(?<!\d)(\d{3}) ?k(?![a-z])")
 PATCH_AT = 1792508400   # 2026-10-21 00:00 KST
 AOE_MIN = 4             # 8칸 중 범위 도술(대상 2명 이상)이 이만큼이면 광역
 PER_CARD = 10
@@ -48,7 +52,10 @@ def parse(bd):
 
 def grounds_of(d):
     txt = (d["name"] + " " + d["body"]).lower()
-    return [g for g, ks in KEYWORDS.items() if any(k in txt for k in ks)]
+    gs = {g for g, ks in KEYWORDS.items() if any(k in txt for k in ks)}
+    nums = [int(n) for n in KNUM.findall(txt)]
+    gs |= {g for g, lo, hi in HIGH if any(lo <= n < hi for n in nums)}
+    return [g for g in GROUNDS if g in gs]
 
 
 def style_of(d):

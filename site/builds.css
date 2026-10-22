@@ -4,7 +4,10 @@
 .mtabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
 body[data-mt="recs"] .col-l{display:none!important}
 body[data-mt="skills"] .col-r{display:none!important}
-@media (min-width:1280px){.mtabs{flex:none;margin:12px 0 0;max-width:420px}.cols{grid-template-columns:minmax(0,1fr)!important}}
+@media (min-width:1280px){.mtabs{flex:none;margin:12px 0 0;max-width:420px}.cols{grid-template-columns:minmax(0,1fr)!important}
+  /* 한 번에 한쪽만 보이므로 1840px까지 늘리지 않는다: 글줄·카드가 너무 길어짐. 패널은 내용만큼만(넘치면 안에서 스크롤) */
+  .wrap{max-width:1320px}.panel{align-self:start;max-height:100%}
+  .lvrow{grid-template-columns:repeat(6,minmax(0,1fr))!important}}
 /* 추천 빌드: 사냥터 칩 → 광역/단일 → 생존·믹스·딜 카드 */
 .bd-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
 .bd-seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:0 0 12px}

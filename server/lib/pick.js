@@ -3,8 +3,8 @@
 //   필드: <사냥터 키> = 빌드 JSON, _style = {v: "광역"|"단일", at: 바꾼 시각} JSON
 // 불러올 때는 해시와 수첩 data(save로 저장된 것) 중 더 최근 것을 쓴다: 서버에 못 간 선택도 [저장]을 누르면 살아난다
 export const MAX_BUILD = 4000;   // 빌드 하나 JSON 길이 한도
-// 사냥터 키는 정해진 목록만(필드 수가 고정이라 해시를 마구 키우지 못함). 비경 3종 자리 미리 둠
-export const GROUND_KEYS = ["wild", "well", "mine", "secret", "secret1", "secret2", "secret3", "boss"];
+// 사냥터 키는 정해진 목록만(필드 수가 고정이라 해시를 마구 키우지 못함). 비경 3종 자리 미리 둠, k290~k400은 260k 위 사냥터
+export const GROUND_KEYS = ["wild", "well", "mine", "k290", "k310", "k360", "k400", "secret", "secret1", "secret2", "secret3", "boss"];
 const STYLES = ["광역", "단일"];
 
 function isObj(v) {
