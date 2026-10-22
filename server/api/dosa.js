@@ -6,12 +6,15 @@
 //   GET  ?a=data&name=&key=  /  POST {a:"setdata", key, name, value}   계산용 비공개 게임 데이터(관리자)
 //   GET  ?a=pending|all&key=       분석할 프로필(관리자)
 //   POST {a:"save", nick, pin, data, create}
+//   POST {a:"pick", nick, pin, g?, build?, prefStyle?}   내 빌드·광역/단일 즉시 저장(재계산 없음, b:<닉네임> 해시. lib/pick.js)
 //   POST {a:"result", key, nick, updatedAt, result}   분석 결과 기록(관리자)
 //   POST {a:"import", key, profiles:[...]}            옮겨 오기(관리자)
 // 환경 변수: ADMIN_KEY, GH_TOKEN(저장 직후 GitHub Actions 분석 요청), Upstash 연결 값(KV_REST_API_URL·KV_REST_API_TOKEN 또는 UPSTASH_REDIS_REST_URL·TOKEN)
 // Redis 키: p:<닉네임> 프로필 전체, m:<닉네임> 길드원 현황 요약, g:<닉네임> 분석 진행률(1시간 뒤 삭제), nicks 닉네임 목록, lastDispatch:<해시>(1시간 뒤 삭제)
+//           b:<닉네임> 내 빌드 해시(사냥터 키 → 빌드 JSON, _style → 광역/단일). load·all은 이것을 data에 합쳐 돌려준다
 import { Redis } from "@upstash/redis";
 import { createHash } from "node:crypto";
+import { pickOps, mergePicks, forAll, MAX_FIELDS } from "../lib/pick.js";
 
 const MAX_DATA = 45000;
 const MEMBERS_HIDE = ["테스트"];
@@ -123,7 +126,8 @@ async function handleGet(p) {
     if (prof.pinHash !== hash(nick, String(p.pin || ""))) {
       return out({ ok: false, err: "pin" });
     }
-    return out({ ok: true, ...pub(prof), progress: await db().get("g:" + nick), now: Date.now() });
+    const [g, picks] = await Promise.all([db().get("g:" + nick), db().hgetall("b:" + nick)]);
+    return out({ ok: true, ...pub(prof), data: mergePicks(prof.data, picks), progress: g, now: Date.now() });
   }
   if (p.a === "status") {
     const nick = cleanNick(p.nick);
@@ -153,8 +157,14 @@ async function handleGet(p) {
     if (!isAdmin(p.key)) {
       return out({ ok: false, err: "key" });
     }
-    const list = (await getMany("p:")).filter((x) => p.a === "all" || !x.resultFor || String(x.resultFor) !== String(x.updatedAt)).map(pub);
-    return out({ ok: true, list });
+    const profs = (await getMany("p:")).filter((x) => p.a === "all" || !x.resultFor || String(x.resultFor) !== String(x.updatedAt));
+    let picks = [];
+    if (profs.length) {
+      const pl = db().pipeline();
+      profs.forEach((x) => pl.hgetall("b:" + x.nick));
+      picks = await pl.exec();
+    }
+    return out({ ok: true, list: profs.map((x, i) => forAll(x, picks[i])) });
   }
   return out({ ok: true, service: "dosa" });
 }
@@ -192,6 +202,41 @@ async function handlePost(b) {
       run = "error";
     }
     return out({ ok: true, updatedAt: now, created, run });
+  }
+  if (b.a === "pick") {
+    const nick = cleanNick(b.nick);
+    const pin = String(b.pin || "");
+    if (!nick || !/^\d{4}$/.test(pin)) {
+      return out({ ok: false, err: "input" });
+    }
+    const ops = pickOps(b);
+    if (!ops.ok) {
+      return out(ops);
+    }
+    const prof = await db().get("p:" + nick);
+    if (!prof) {
+      return out({ ok: false, err: "none" });   // 등록 전이면 만들지 않음(저장을 눌러 등록)
+    }
+    if (prof.pinHash !== hash(nick, pin)) {
+      return out({ ok: false, err: "pin" });
+    }
+    const key = "b:" + nick;
+    const fresh = Object.keys(ops.set).filter((k) => k !== "_style");
+    if (fresh.length) {
+      const [n, has] = await Promise.all([db().hlen(key), db().hexists(key, fresh[0])]);
+      if (!has && n >= MAX_FIELDS) {
+        return out({ ok: false, err: "size" });
+      }
+    }
+    const pl = db().pipeline();
+    if (Object.keys(ops.set).length) {
+      pl.hset(key, ops.set);
+    }
+    if (ops.del.length) {
+      pl.hdel(key, ...ops.del);
+    }
+    await pl.exec();
+    return out({ ok: true });
   }
   if (b.a === "result") {
     if (!isAdmin(b.key)) {
