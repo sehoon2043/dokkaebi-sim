@@ -76,6 +76,9 @@ rep('    <div class="lvrow" id="lvrow" role="group" aria-label="스타일별 강
     '<span class="hint">게임에서 열린 도술 칸 수예요. 추천 트리를 이 칸 수에 맞춰 계산해요.</span></div>\n'
     '    <div class="lvrow" id="lvrow" role="group" aria-label="스타일별 강화 레벨"></div>')
 rep('s.slotCount = s.slotCount || 7;', 's.slotCount = s.slotCount || 8;')
+# 추천 빌드 탭: 광역/단일 선택과 사냥터별 내 빌드(누르는 즉시 pick으로 저장)
+rep('s.slotCount = s.slotCount || 8;', 's.slotCount = s.slotCount || 8; s.prefStyle = s.prefStyle === "단일" ? "단일" : "광역";'
+    ' s.mybuilds = s.mybuilds && typeof s.mybuilds === "object" && !Array.isArray(s.mybuilds) ? s.mybuilds : {};')
 
 rep('.rec-copy{', '.slotrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-bottom:10px}.slotrow .hint{margin:0}\n.rec-copy{display:none!important}\n.rec-copy{')
 
@@ -427,8 +430,8 @@ rep('.rec-copy{display:none!important}', '.rec-copy{display:none!important}\n'
     '@media (max-width:1279.98px){#sec-recs{order:0}}')
 # 좁은 화면(휴대폰): 추천 트리 / 도술 입력을 탭 버튼으로 나눠 한쪽만 보여 줌. PC(1280px 이상)는 두 패널 그대로
 rep('  <div class="cols">',
-    '  <div class="mtabs" role="tablist" aria-label="화면 전환"><button type="button" role="tab" data-mt="recs">추천 트리</button>'
-    '<button type="button" role="tab" data-mt="skills">도술 입력</button></div>\n  <div class="cols">')
+    '  <div class="mtabs" role="tablist" aria-label="화면 전환"><button type="button" role="tab" data-mt="skills">내 수첩</button>'
+    '<button type="button" role="tab" data-mt="recs">추천 빌드</button></div>\n  <div class="cols">')
 rep('.rec-legend{', '.mtabs{display:none}\n'
     '@media (max-width:1279.98px){.mtabs{display:flex;gap:6px;margin:0 0 4px}.mtabs button{flex:1;font-weight:600;padding:9px 12px}'
     '.mtabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}'
@@ -447,6 +450,19 @@ rep('      rightTab = "recs"; renderRight(); setStatus("추천 트리가 갱신�
     '      rightTab = "recs"; renderRight(); setMt("recs"); setStatus("추천 트리가 갱신됐어요", "ok");')
 rep('.mtabs{display:none}', '.mtabs{display:none}\n.pnav{display:none!important}\n'
     '@media (max-width:1279.98px){.bar{position:static}.mtabs{position:sticky;top:0;z-index:5;background:var(--bg);padding:6px 0;margin:0}}')
+# 추천 빌드 탭(사냥터별 생존·믹스·딜 카드): 결과에 grounds가 있으면 새 화면, 없으면(예전 결과) 예전 추천 트리 화면
+SITE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "site")
+rd = lambda n: open(os.path.join(SITE, n), encoding="utf-8").read()
+rep('</style>', rd("builds.css") + '</style>')
+rep('  <section id="sec-recs" hidden>',
+    '  <section id="sec-builds" hidden>\n    <h2>추천 빌드</h2>\n    <p class="hint" id="bdBasis"></p>\n    <div id="bd"></div>\n  </section>\n'
+    '  <section id="sec-recs" hidden>')
+rep('  $("sec-recs").hidden = rightTab !== "recs";\n  if (rightTab === "recs") renderRecs();',
+    '  const nb = !!(RECS && RECS.grounds);\n  $("sec-builds").hidden = rightTab !== "recs" || !nb;\n'
+    '  $("sec-recs").hidden = rightTab !== "recs" || nb;\n  if (rightTab === "recs") { if (nb) renderBuilds(); else renderRecs(); }')
+rep('const LSM = "dosa-notebook-site-mt";',
+    'const ICONS = ' + json.dumps(json.load(open(os.path.join(SITE, "icons.json"), encoding="utf-8")), ensure_ascii=False) + ';\n'
+    + rd("builds.js") + 'const LSM = "dosa-notebook-site-mt";')
 h = h.replace("__API__", api)
 assert "localStorage.setItem(LS, JSON.stringify(state)); dirty = false; setStatus(\"저장됨 · 이 브라우저에만\"" not in h
 page = ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n'

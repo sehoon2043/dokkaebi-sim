@@ -1,0 +1,46 @@
+/* 탭 2개: [내 수첩] / [추천 빌드]. PC에서도 한쪽만 보여 주고 한 칸을 다 쓴다 */
+.mtabs{display:flex!important;gap:6px;margin:0 0 4px}
+.mtabs button{flex:1;font-weight:600;padding:9px 12px}
+.mtabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+body[data-mt="recs"] .col-l{display:none!important}
+body[data-mt="skills"] .col-r{display:none!important}
+@media (min-width:1280px){.mtabs{flex:none;margin:12px 0 0;max-width:420px}.cols{grid-template-columns:minmax(0,1fr)!important}}
+/* 추천 빌드: 사냥터 칩 → 광역/단일 → 생존·믹스·딜 카드 */
+.bd-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+.bd-seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:0 0 12px}
+.bd-seg button{border:0;border-radius:0;padding:6px 20px}
+.bd-seg button[aria-pressed="true"]{background:var(--accent);color:var(--bg);font-weight:600}
+.bd-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+@media (max-width:900px){.bd-cards{grid-template-columns:minmax(0,1fr)}}
+.bd-card{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:12px;display:grid;gap:10px;min-width:0}
+.bd-card.mine{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.bd-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.bd-head h3{margin:0;font-size:1.05rem}.bd-head small{color:var(--muted);font-size:.78rem}
+.bd-badge{font-size:.72rem;font-weight:600;padding:1px 7px;border-radius:9px;border:1px solid currentColor;color:var(--accent)}
+.bd-cand{border-top:1px solid var(--line);padding-top:10px;display:grid;gap:6px;min-width:0}
+.bd-cand .nm{font-weight:600;overflow-wrap:anywhere}
+.bd-cand .meta{font-size:.82rem;color:var(--muted);overflow-wrap:anywhere}
+.bd-cand .meta.warn{color:var(--warn)}
+.bd-cand a{color:var(--accent)}
+.bd-tag{font-size:.7rem;font-weight:600;padding:0 6px;border-radius:9px;border:1px solid currentColor;color:var(--ok);margin-right:6px;vertical-align:1px}
+.bd-note{font-size:.84rem;color:var(--muted);margin:0}
+.bd-more summary,.bd-un summary{cursor:pointer;font-size:.85rem;color:var(--accent);list-style:none}
+.bd-more summary::-webkit-details-marker,.bd-un summary::-webkit-details-marker{display:none}
+.bd-more[open] summary{margin-bottom:4px}
+.bd-un{margin-top:16px}
+.bd-un .bd-cand{max-width:520px}
+.bd-pick{justify-self:start}
+.bd-pick[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);font-weight:600}
+/* 아이콘 행: 사용 순서대로, 왼쪽 위 번호, 궁극기 금색·힐 초록 테두리 */
+.icrow{display:flex;flex-wrap:wrap;gap:4px}
+.ic{position:relative;width:36px;height:36px;border:2px solid var(--line);border-radius:7px;display:grid;place-items:center;background:var(--surface);overflow:hidden;flex:none}
+.ic img{width:32px;height:32px;display:block}
+.ic b{font-size:.6rem;line-height:1.1;text-align:center;font-weight:600}
+.ic i{position:absolute;top:0;left:0;font-style:normal;font-size:.6rem;font-weight:700;line-height:1;padding:1px 3px;background:rgb(0 0 0 / .62);color:#fff;border-bottom-right-radius:5px}
+.ic.ult{border-color:#c9a227}.ic.heal{border-color:var(--ok)}
+/* 내 수첩: 내 빌드 목록 */
+.mb-list{display:grid;gap:10px}
+.mb-item{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 12px;display:grid;gap:8px}
+.mb-item h3{margin:0;font-size:.95rem}.mb-item h3 small{color:var(--muted);font-weight:400;margin-left:6px}
+.mb-res{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:.84rem}
+.mb-res label{display:flex;gap:5px;align-items:center}
+.mb-res input{width:6.5em;text-align:right}
