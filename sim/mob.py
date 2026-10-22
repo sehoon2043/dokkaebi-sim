@@ -80,7 +80,8 @@ def mode_of(order):
         mode = "기동"
     return mode
 
-def sim(order, n, T=300, cast="flat", Kc=20, dot_rage=True):
+def sim(order, n, T=300, cast="flat", Kc=20, dot_rage=True, cnt=None):
+    """cnt(dict)를 주면 도술마다 시전 횟수를 센다(유지력 계산용)"""
     mode = mode_of(order)
     # 강타(10/21): 시전마다 영력 10(최대 100), 33/66/100에서 피해 +3/7/10%, 가득 찬 채 궁극기를 쓰면 일반 도술 쿨 초기화
     # 주술(10/21): 시전마다 영력 8 → 30/60/90에서 구슬 1/2/3, 궁극기의 강화 저주·폭발 +30/60/90%, 주술 도술을 쓰면 모든 도술 남은 쿨 0.1초×구슬 감소
@@ -103,6 +104,7 @@ def sim(order, n, T=300, cast="flat", Kc=20, dot_rage=True):
             dt = 0.75; tot += 52.0; idle += dt
         else:
             k = ready[0]; mw = 1.10 if t < yogi else 1.0
+            if cnt is not None: cnt[k] = cnt.get(k, 0) + 1
             if k in ("대폭발", "폭주"):
                 for i in range(min(n, 5)):
                     am = 1 + ARMOR * ((u.get(("방깎", i), -1) > t) + (u.get(("방깎2", i), -1) > t)) + 0.10 * (u.get(("결계", i), -1) > t)
@@ -190,6 +192,12 @@ def quick(o):
     """간이 점수(5마리, 한 조건)"""
     return sim(o, 5, 300, "flat", 20)[0] * (GATHER_BONUS if gathered(o) else 1.0)
 def idle(o): return sum(sim(o, 5, 300, c, k)[1] for c, k in CONDS) / len(CONDS)
+SEC = 300
+def casts(o):
+    """시전 횟수(5마리, flat, 요기범람 20, 300초 한 번). 유지력 = sustain.rate(o, casts(o), SEC)"""
+    c = {}
+    sim(o, 5, SEC, "flat", 20, cnt=c)
+    return c
 
 def valid_order(c):
     nh = [x for x in c if x not in HEALS]   # 맨 앞에 둔 힐(게임에서 체력 조건을 걸어 씀)은 소용돌이 위치 규칙에서 뺌

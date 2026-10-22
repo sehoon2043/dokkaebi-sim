@@ -122,6 +122,20 @@ def kills(names, order, travel, Ps=HUNT_P, syn=(True, False)):
     return tot / n
 
 
+SEC = T
+
+
+def casts(names, order):
+    """시전 횟수(HUNT_P 첫 보정값, 연계 켬, T초 한 번). 유지력 = sustain.rate(order, casts(...), SEC)"""
+    S.AMP_HIT.update({k: 0.0 for k in S.AMP_HIT})
+    S.SYN = True
+    u, mem, od = _prep(names, HUNT_P[0])
+    od.sort(key=lambda v: order.index(v["n"]) if v["n"] in order else 99)
+    sim = S.Sim([dict(x) for x in od], mem, T)
+    sim.run()
+    return sim.casts
+
+
 def dps_rate(names, order):
     """몹 체력 기준용: 이 트리의 초당 피해(모델 단위)"""
     S.AMP_HIT.update({k: 0.0 for k in S.AMP_HIT})

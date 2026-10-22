@@ -344,6 +344,7 @@ class Sim:
         self.buffs = {}                 # 이름: (값, 끝)
         self.cdcut = (0.0, -1.0)
         self.debuff = {}                # 대상에 걸린 상태: 끝나는 시각
+        self.casts = {}                 # 도술별 시전 횟수(유지력 계산용)
 
     def fast(self):
         return False   # 10/21: 요기범람 전개 속도 50% 증가 삭제
@@ -423,6 +424,7 @@ class Sim:
             self.debuff["방깎"] = end + 5
 
     def cast(self, s):
+        self.casts[s["n"]] = self.casts.get(s["n"], 0) + 1
         start = self.now
         self.add(s["damage"] * self.mult(s))
         s["charges"] -= 1
