@@ -5,16 +5,41 @@ const HEAL_N = new Set(["생명의 흐름", "생명의 축복"]);
 const LSGR = "dosa-notebook-site-ground";
 let bdGround = null;
 try { bdGround = localStorage.getItem(LSGR); } catch (e) {}
+function icSpan(n, i, ult){
+  const s = el("span", {class:"ic" + (n === ult ? " ult" : HEAL_N.has(n) ? " heal" : ""), title: (i >= 0 ? (i + 1) + ". " : "") + n + (n === ult ? " (궁극기)" : "")});
+  if (i >= 0) s.appendChild(el("i", null, String(i + 1)));
+  if (ICONS[n]) s.appendChild(el("img", {src: "icons/" + ICONS[n], alt: n, width: "32", height: "32", loading: "lazy"}));
+  else s.appendChild(el("b", null, n.slice(0, 3)));
+  return s;
+}
 function iconRow(order, ult){
   const row = el("div", {class:"icrow"});
-  order.forEach((n, i) => {
-    const s = el("span", {class:"ic" + (n === ult ? " ult" : HEAL_N.has(n) ? " heal" : ""), title: (i + 1) + ". " + n + (n === ult ? " (궁극기)" : "")});
-    s.appendChild(el("i", null, String(i + 1)));
-    if (ICONS[n]) s.appendChild(el("img", {src: "icons/" + ICONS[n], alt: n, width: "32", height: "32", loading: "lazy"}));
-    else s.appendChild(el("b", null, n.slice(0, 3)));
-    row.appendChild(s);
-  });
+  order.forEach((n, i) => row.appendChild(icSpan(n, i, ult)));
   return row;
+}
+// 칸 배치: 게임 화면처럼 위 F1~F3 + 궁극기, 아래 하단 1~5. 아이콘 번호는 사용 순서
+function slotGrid(slots, order, ult){
+  const cell = (lab, n) => {
+    const c = el("div", {class:"slc"});
+    c.appendChild(n ? icSpan(n, order.indexOf(n), ult) : el("span", {class:"ic empty", title:"빈 칸"}));
+    c.appendChild(el("small", null, lab));
+    return c;
+  };
+  const top = el("div", {class:"slrow"}), bot = el("div", {class:"slrow"});
+  for (let i = 5; i < 8; i++) top.appendChild(cell(SLOT_LABELS[i], slots[i]));
+  top.appendChild(cell("궁극기", ult));
+  for (let i = 0; i < 5; i++) bot.appendChild(cell(SLOT_LABELS[i], slots[i]));
+  const box = el("div", {class:"slgrid"}); box.appendChild(top); box.appendChild(bot);
+  return box;
+}
+// 사용 순서 + 칸 배치(칸 정보가 없는 예전 저장분은 순서만)
+function buildView(src){
+  const box = el("div", {class:"bd-view"});
+  const slots = src.slots || [];
+  if (!slots.some(Boolean)) { box.appendChild(iconRow(src.order, src.ult)); return box; }
+  box.appendChild(el("div", {class:"bd-lab"}, "사용 순서")); box.appendChild(iconRow(src.order, src.ult));
+  box.appendChild(el("div", {class:"bd-lab"}, "칸 배치")); box.appendChild(slotGrid(slots, src.order, src.ult));
+  return box;
 }
 function fmtPct(v){
   if (v == null) return "";
@@ -85,7 +110,7 @@ function calcCand(g, st, t, c, from){
   else parts.push("딜 카드 대비 " + kind + " " + fmtPct(c.dmgPct));
   parts.push(c.sus > 0 ? "유지력: 초당 공격력의 " + c.sus.toFixed(1) + "%" : "회복·보호막 없음");
   d.appendChild(el("div", {class:"meta"}, parts.join(" · ")));
-  d.appendChild(iconRow(c.order, c.ult));
+  d.appendChild(buildView(c));
   d.appendChild(pickBtn(g, st, t, from, c));
   return d;
 }
@@ -98,7 +123,7 @@ function commCand(g, st, t, e, extra){
   if (k.video) { meta.appendChild(document.createTextNode(" · ")); const a = el("a", {href: k.video, target: "_blank", rel: "noopener"}, "영상"); meta.appendChild(a); }
   d.appendChild(meta);
   if (k.missing && k.missing.length) d.appendChild(el("div", {class:"meta warn"}, "안 배운 도술 " + k.missing.length + "개: " + k.missing.join(", ")));
-  d.appendChild(iconRow(k.order, k.ult));
+  d.appendChild(buildView(k));
   d.appendChild(pickBtn(g, st, t, "comm", k, e.id));
   return d;
 }
@@ -109,8 +134,8 @@ function card(g, st, t, c){
   if (mb && mb.tier === t && mb.style === st) h.appendChild(el("span", {class:"bd-badge"}, "내 빌드"));
   box.appendChild(h);
   if (c.calc) box.appendChild(calcCand(g, st, t, c.calc));
-  if (c.calc2) box.appendChild(calcCand(g, st, t, c.calc2, "calc2"));
   else box.appendChild(el("p", {class:"bd-note"}, g === "boss" && t !== "딜" ? "보스 생존·믹스 계산은 준비 중이에요. 아래 커뮤니티 빌드를 참고하세요." : "배운 도술로는 이 조건의 트리를 계산할 수 없어요."));
+  if (c.calc2) box.appendChild(calcCand(g, st, t, c.calc2, "calc2"));
   const comm = (c.comm || []).filter(e => (RECS.decks || {})[String(e.id)]);
   if (comm.length) box.appendChild(commCand(g, st, t, comm[0]));
   else box.appendChild(el("p", {class:"bd-note"}, "이 조건의 커뮤니티 빌드가 아직 없어요."));
@@ -177,7 +202,7 @@ function renderMyBuilds(){
     let src = calcName(g, b.tier, b.from);
     if (b.from === "comm") { const k = (RECS.decks || {})[String(b.commId)]; src = "커뮤니티: " + (k ? k.name : "덱 #" + b.commId); }
     const h = el("h3", null, G[g] ? G[g].name : g); h.appendChild(el("small", null, b.style + " · " + b.tier + " · " + src)); it.appendChild(h);
-    it.appendChild(iconRow(b.order, b.ult));
+    it.appendChild(buildView(b));
     const res = el("div", {class:"mb-res"}); res.appendChild(el("b", null, "돌려 본 결과"));
     const pl = el("label", null, "물약"), ps = el("select", {style:"width:auto"});
     for (const [v, t] of [["", "안 적음"], ["yes", "썼음"], ["no", "안 씀"]]) ps.appendChild(el("option", {value: v}, t));

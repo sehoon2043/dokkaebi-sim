@@ -40,6 +40,14 @@ body[data-mt="skills"] .col-r{display:none!important}
 .ic b{font-size:.6rem;line-height:1.1;text-align:center;font-weight:600}
 .ic i{position:absolute;top:0;left:0;font-style:normal;font-size:.6rem;font-weight:700;line-height:1;padding:1px 3px;background:rgb(0 0 0 / .62);color:#fff;border-bottom-right-radius:5px}
 .ic.ult{border-color:#c9a227}.ic.heal{border-color:var(--ok)}
+.ic.empty{border-style:dashed;background:transparent}
+/* 사용 순서 + 칸 배치(위 F1~F3·궁극기, 아래 하단 1~5) */
+.bd-view{display:grid;gap:4px}
+.bd-lab{font-size:.72rem;color:var(--muted)}
+.slgrid{display:grid;gap:4px}
+.slrow{display:grid;grid-template-columns:repeat(5,44px);gap:4px}
+.slc{display:grid;justify-items:center;gap:2px}
+.slc small{font-size:.62rem;line-height:1;color:var(--muted);white-space:nowrap}
 /* 내 수첩: 내 빌드 목록 */
 .mb-list{display:grid;gap:10px}
 .mb-item{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 12px;display:grid;gap:8px}
